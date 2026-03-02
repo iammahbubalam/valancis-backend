@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: valancis-backend
+    env: docker
+    plan: free
+    region: singapore
+    envVars:
+      - key: ENV
+        value: production
+      - key: PORT
+        value: 8080
+      # You will be prompted to enter these in the Render Dashboard:
+      # - DB_DSN
+      # - JWT_SECRET
+      # - GOOGLE_CLIENT_ID
+      # - GOOGLE_CLIENT_SECRET
