@@ -1397,3 +1397,12 @@ func (r *productRepository) GetVariantByID(ctx context.Context, id string) (*dom
 	variant := sqlcVariantToDomain(v)
 	return &variant, nil
 }
+
+func (r *productRepository) GetVariantByIDForUpdate(ctx context.Context, id string) (*domain.Variant, error) {
+	v, err := r.queries.GetVariantByIDForUpdate(ctx, stringToUUID(id))
+	if err != nil {
+		return nil, err
+	}
+	variant := sqlcVariantToDomain(v)
+	return &variant, nil
+}

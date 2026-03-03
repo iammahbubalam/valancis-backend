@@ -67,17 +67,18 @@ func sqlcCartToDomain(c sqlc.Cart, items []sqlc.GetCartItemsRow) *domain.Cart {
 
 func sqlcOrderToDomain(o sqlc.Order, items []sqlc.GetOrderItemsRow) *domain.Order {
 	order := &domain.Order{
-		ID:            uuidToString(o.ID),
-		UserID:        uuidToString(o.UserID),
-		Status:        o.Status,
-		TotalAmount:   numericToFloat64(o.TotalAmount),
-		PaymentMethod: ptrString(o.PaymentMethod),
-		PaymentStatus: ptrString(o.PaymentStatus),
-		PaidAmount:    numericToFloat64(o.PaidAmount),
-		ShippingFee:   numericToFloat64(o.ShippingFee),
-		IsPreorder:    o.IsPreorder,
-		CreatedAt:     pgtimeToTime(o.CreatedAt),
-		UpdatedAt:     pgtimeToTime(o.UpdatedAt),
+		ID:             uuidToString(o.ID),
+		UserID:         uuidToString(o.UserID),
+		Status:         o.Status,
+		TotalAmount:    numericToFloat64(o.TotalAmount),
+		PaymentMethod:  ptrString(o.PaymentMethod),
+		PaymentStatus:  ptrString(o.PaymentStatus),
+		PaidAmount:     numericToFloat64(o.PaidAmount),
+		RefundedAmount: numericToFloat64(o.RefundedAmount),
+		ShippingFee:    numericToFloat64(o.ShippingFee),
+		IsPreorder:     o.IsPreorder,
+		CreatedAt:      pgtimeToTime(o.CreatedAt),
+		UpdatedAt:      pgtimeToTime(o.UpdatedAt),
 	}
 
 	if len(o.PaymentDetails) > 0 {
@@ -93,15 +94,23 @@ func sqlcOrderToDomain(o sqlc.Order, items []sqlc.GetOrderItemsRow) *domain.Orde
 		order.ShippingAddress = addr
 	}
 
-	// ... items mapping (unchanged, will be included by context) ...
+	// Parse payment details
+	if len(o.PaymentDetails) > 0 {
+		var details domain.JSONB
+		json.Unmarshal(o.PaymentDetails, &details)
+		order.PaymentDetails = details
+	}
+
 	order.Items = make([]domain.OrderItem, len(items))
 	for i, item := range items {
 		order.Items[i] = domain.OrderItem{
-			ID:        uuidToString(item.ID),
-			OrderID:   uuidToString(item.OrderID),
-			ProductID: uuidToString(item.ProductID),
-			Quantity:  int(item.Quantity),
-			Price:     numericToFloat64(item.Price),
+			ID:          uuidToString(item.ID),
+			OrderID:     uuidToString(item.OrderID),
+			ProductID:   uuidToString(item.ProductID),
+			Quantity:    int(item.Quantity),
+			Price:       numericToFloat64(item.Price),
+			VariantName: item.VariantName,
+			VariantSKU:  item.VariantSku,
 			Product: domain.Product{
 				Name: item.Name,
 				Slug: item.Slug,
@@ -361,17 +370,44 @@ func (r *orderRepository) CreateOrder(ctx context.Context, order *domain.Order) 
 // ...
 
 func (r *orderRepository) GetByID(ctx context.Context, id string) (*domain.Order, error) {
-	order, err := r.queries.GetOrderByID(ctx, stringToUUID(id))
+	row, err := r.queries.GetOrderByID(ctx, stringToUUID(id))
 	if err != nil {
 		return nil, err
 	}
 
-	items, err := r.queries.GetOrderItems(ctx, order.ID)
+	items, err := r.queries.GetOrderItems(ctx, row.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	return sqlcOrderToDomain(order, items), nil
+	// Map row to sqlc.Order for the shared mapper
+	o := sqlc.Order{
+		ID:              row.ID,
+		UserID:          row.UserID,
+		Status:          row.Status,
+		TotalAmount:     row.TotalAmount,
+		ShippingAddress: row.ShippingAddress,
+		PaymentMethod:   row.PaymentMethod,
+		PaymentStatus:   row.PaymentStatus,
+		CreatedAt:       row.CreatedAt,
+		UpdatedAt:       row.UpdatedAt,
+		PaidAmount:      row.PaidAmount,
+		PaymentDetails:  row.PaymentDetails,
+		IsPreorder:      row.IsPreorder,
+		RefundedAmount:  row.RefundedAmount,
+		ShippingFee:     row.ShippingFee,
+	}
+
+	order := sqlcOrderToDomain(o, items)
+
+	// Enrich with User info from the JOIN
+	order.User = domain.User{
+		Email:     row.Email,
+		FirstName: ptrString(row.FirstName),
+		LastName:  ptrString(row.LastName),
+	}
+
+	return order, nil
 }
 
 func (r *orderRepository) GetByUserID(ctx context.Context, userID string) ([]domain.Order, error) {
@@ -441,17 +477,18 @@ func (r *orderRepository) GetAll(ctx context.Context, filter domain.OrderFilter)
 	result := make([]domain.Order, len(orders))
 	for i, o := range orders {
 		result[i] = domain.Order{
-			ID:            uuidToString(o.ID),
-			UserID:        uuidToString(o.UserID),
-			Status:        o.Status,
-			TotalAmount:   numericToFloat64(o.TotalAmount),
-			PaymentMethod: ptrString(o.PaymentMethod),
-			PaymentStatus: ptrString(o.PaymentStatus),
-			PaidAmount:    numericToFloat64(o.PaidAmount),
-			ShippingFee:   numericToFloat64(o.ShippingFee),
-			IsPreorder:    o.IsPreorder,
-			CreatedAt:     pgtimeToTime(o.CreatedAt),
-			UpdatedAt:     pgtimeToTime(o.UpdatedAt),
+			ID:             uuidToString(o.ID),
+			UserID:         uuidToString(o.UserID),
+			Status:         o.Status,
+			TotalAmount:    numericToFloat64(o.TotalAmount),
+			PaymentMethod:  ptrString(o.PaymentMethod),
+			PaymentStatus:  ptrString(o.PaymentStatus),
+			PaidAmount:     numericToFloat64(o.PaidAmount),
+			RefundedAmount: numericToFloat64(o.RefundedAmount),
+			ShippingFee:    numericToFloat64(o.ShippingFee),
+			IsPreorder:     o.IsPreorder,
+			CreatedAt:      pgtimeToTime(o.CreatedAt),
+			UpdatedAt:      pgtimeToTime(o.UpdatedAt),
 			User: domain.User{
 				Email:     o.Email,
 				FirstName: ptrString(o.FirstName),
@@ -468,6 +505,34 @@ func (r *orderRepository) GetAll(ctx context.Context, filter domain.OrderFilter)
 			json.Unmarshal(o.ShippingAddress, &addr)
 			result[i].ShippingAddress = addr
 		}
+
+		// Fetch items for this order
+		items, _ := r.queries.GetOrderItems(ctx, o.ID)
+		domainItems := make([]domain.OrderItem, len(items))
+		for j, item := range items {
+			domainItems[j] = domain.OrderItem{
+				ID:          uuidToString(item.ID),
+				OrderID:     uuidToString(item.OrderID),
+				ProductID:   uuidToString(item.ProductID),
+				Quantity:    int(item.Quantity),
+				Price:       numericToFloat64(item.Price),
+				VariantName: item.VariantName,
+				VariantSKU:  item.VariantSku,
+				Product: domain.Product{
+					Name: item.Name,
+					Slug: item.Slug,
+				},
+			}
+			if item.VariantID.Valid {
+				vid := uuidToString(item.VariantID)
+				domainItems[j].VariantID = &vid
+			}
+			if len(item.Media) > 0 {
+				domainItems[j].Product.Media = domain.RawJSON(item.Media)
+				mapMediaToImages(&domainItems[j].Product)
+			}
+		}
+		result[i].Items = domainItems
 	}
 
 	return result, count, nil

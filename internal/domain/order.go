@@ -59,13 +59,15 @@ type Order struct {
 }
 
 type OrderItem struct {
-	ID        string  `json:"id"`
-	OrderID   string  `json:"orderId"`
-	ProductID string  `json:"productId"`
-	Product   Product `json:"product"`
-	VariantID *string `json:"variantId"`
-	Quantity  int     `json:"quantity"`
-	Price     float64 `json:"price"` // Price at time of purchase
+	ID          string  `json:"id"`
+	OrderID     string  `json:"orderId"`
+	ProductID   string  `json:"productId"`
+	Product     Product `json:"product"`
+	VariantID   *string `json:"variantId"`
+	VariantName *string `json:"variantName,omitempty"`
+	VariantSKU  *string `json:"variantSku,omitempty"`
+	Quantity    int     `json:"quantity"`
+	Price       float64 `json:"price"` // Price at time of purchase
 }
 
 // --- Interfaces ---

@@ -4,6 +4,9 @@ SELECT * FROM variants WHERE product_id = $1;
 -- name: GetVariantByID :one
 SELECT * FROM variants WHERE id = $1;
 
+-- name: GetVariantByIDForUpdate :one
+SELECT * FROM variants WHERE id = $1 FOR UPDATE;
+
 -- name: CreateVariant :one
 INSERT INTO variants (
     product_id, name, stock, sku, 

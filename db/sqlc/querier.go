@@ -97,7 +97,7 @@ type Querier interface {
 	// All date ranges, thresholds, limits controlled by frontend via query params
 	// Variants below threshold (parameterized - no hardcoded limit)
 	GetLowStockProducts(ctx context.Context, arg GetLowStockProductsParams) ([]GetLowStockProductsRow, error)
-	GetOrderByID(ctx context.Context, id pgtype.UUID) (Order, error)
+	GetOrderByID(ctx context.Context, id pgtype.UUID) (GetOrderByIDRow, error)
 	GetOrderHistory(ctx context.Context, orderID pgtype.UUID) ([]GetOrderHistoryRow, error)
 	GetOrderItems(ctx context.Context, orderID pgtype.UUID) ([]GetOrderItemsRow, error)
 	GetOrdersByUserID(ctx context.Context, userID pgtype.UUID) ([]Order, error)
@@ -125,6 +125,7 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	GetUserReviewForProduct(ctx context.Context, arg GetUserReviewForProductParams) (Review, error)
 	GetVariantByID(ctx context.Context, id pgtype.UUID) (Variant, error)
+	GetVariantByIDForUpdate(ctx context.Context, id pgtype.UUID) (Variant, error)
 	GetVariantsByProductID(ctx context.Context, productID pgtype.UUID) ([]Variant, error)
 	GetVariantsByProductIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]Variant, error)
 	GetWishlistByUserID(ctx context.Context, userID pgtype.UUID) (Wishlist, error)

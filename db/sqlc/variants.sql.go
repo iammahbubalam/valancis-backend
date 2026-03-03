@@ -341,6 +341,33 @@ func (q *Queries) GetVariantByID(ctx context.Context, id pgtype.UUID) (Variant, 
 	return i, err
 }
 
+const getVariantByIDForUpdate = `-- name: GetVariantByIDForUpdate :one
+SELECT id, product_id, name, stock, sku, attributes, price, sale_price, images, weight, dimensions, barcode, low_stock_threshold, created_at, updated_at FROM variants WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) GetVariantByIDForUpdate(ctx context.Context, id pgtype.UUID) (Variant, error) {
+	row := q.db.QueryRow(ctx, getVariantByIDForUpdate, id)
+	var i Variant
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.Name,
+		&i.Stock,
+		&i.Sku,
+		&i.Attributes,
+		&i.Price,
+		&i.SalePrice,
+		&i.Images,
+		&i.Weight,
+		&i.Dimensions,
+		&i.Barcode,
+		&i.LowStockThreshold,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getVariantsByProductID = `-- name: GetVariantsByProductID :many
 SELECT id, product_id, name, stock, sku, attributes, price, sale_price, images, weight, dimensions, barcode, low_stock_threshold, created_at, updated_at FROM variants WHERE product_id = $1
 `

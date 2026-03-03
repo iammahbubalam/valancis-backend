@@ -395,60 +395,58 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 
 	// 4. Payment Policy Enforcement
 	paymentDetails := domain.JSONB{}
-	paymentStatus := "pending"
 	paidAmount := 0.0
 
 	var requiredDeposit float64
 	if isPreorder {
 		requiredDeposit = totalDepositRequired
 		if requiredDeposit > 0 {
-			// Require payment info for any non-zero deposit
+			// L9: Require payment info for any non-zero deposit
 			if req.PaymentTrxID == "" || req.PaymentProvider == "" || req.PaymentPhone == "" {
 				return nil, fmt.Errorf("Pre-order requires payment info (TrxID, Provider, Phone) — deposit: %.2f BDT", requiredDeposit)
 			}
-			paymentStatus = "pending_verification"
 			paidAmount = requiredDeposit
 
-			detailsMap := map[string]interface{}{
+			paymentDetails = domain.JSONB{
 				"provider":         req.PaymentProvider,
 				"transaction_id":   req.PaymentTrxID,
 				"sender_number":    req.PaymentPhone,
 				"deposit_required": requiredDeposit,
 				"shipping_fee":     shippingFee,
 			}
-			paymentDetails = domain.JSONB(detailsMap)
 		}
-	} else if req.Payment == "advance" { // Full payment
-		paymentStatus = "pending_verification"
+	} else if req.Payment == domain.PaymentMethodAdvance {
+		// L9: Advance payment — require trx info
 		paidAmount = total
 
-		detailsMap := map[string]interface{}{
+		paymentDetails = domain.JSONB{
 			"provider":       req.PaymentProvider,
 			"transaction_id": req.PaymentTrxID,
 			"sender_number":  req.PaymentPhone,
 			"shipping_fee":   shippingFee,
 		}
-		paymentDetails = domain.JSONB(detailsMap)
 	}
 
+	// 5. Build Initial State based on Payment Method & Pre-order
 	order := &domain.Order{
 		ID:              utils.GenerateUUID(),
 		UserID:          userID,
-		Status:          "pending",
 		TotalAmount:     total,
 		ShippingFee:     shippingFee,
 		ShippingAddress: req.Address,
 		PaymentMethod:   req.Payment,
-		PaymentStatus:   paymentStatus,
 		PaidAmount:      paidAmount,
 		IsPreorder:      isPreorder,
 		PaymentDetails:  paymentDetails,
 		Items:           orderItems,
 	}
 
-	if isPreorder && requiredDeposit > 0 {
-		order.Status = "pending_verification"
-	}
+	// L9: Centralized Initial Status (Single Source of Truth from constants.go)
+	initialOrderStatus, initialPaymentStatus := domain.DetermineInitialStatus(
+		req.Payment, isPreorder, requiredDeposit, req.PaymentTrxID != "",
+	)
+	order.Status = initialOrderStatus
+	order.PaymentStatus = initialPaymentStatus
 
 	// 6. Transaction: Create Order, Update Stock, Increment Coupon, Clear Cart
 	err = u.txManager.Do(ctx, func(txCtx context.Context) error {
@@ -456,11 +454,21 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 			return err
 		}
 
-		// Update Stock
+		// 6a. Lock and check stock for each item (L9 Pessimistic Locking)
 		for _, item := range order.Items {
 			if item.VariantID == nil {
 				return fmt.Errorf("item %s has no variant ID", item.ProductID)
 			}
+			// Lock row for update to prevent race conditions
+			variant, err := u.productRepo.GetVariantByIDForUpdate(txCtx, *item.VariantID)
+			if err != nil {
+				return fmt.Errorf("failed to lock stock for variant %s: %v", *item.VariantID, err)
+			}
+			if variant.Stock < item.Quantity {
+				return fmt.Errorf("insufficient stock for item %s (requested: %d, available: %d)", variant.Name, item.Quantity, variant.Stock)
+			}
+
+			// Update Stock
 			if err := u.productRepo.UpdateStock(txCtx, *item.VariantID, -item.Quantity, "order_placed", order.ID); err != nil {
 				return err
 			}
@@ -612,91 +620,138 @@ func (u *OrderUsecase) UpdateOrderStatus(ctx context.Context, orderID, newStatus
 	})
 }
 
-// L9: Strict State Transition Rules
-// L9: Simple Forward-Only Logic (Weight Based)
+// L9: Strict State Transition Validation
+// Uses IsValidTransition from constants.go — the single source of truth.
+// Unknown statuses are REJECTED, not silently passed.
 func (u *OrderUsecase) validateOrderTransition(order *domain.Order, newStatus string) error {
-	// We define a "Progress Weight" for each state.
-	// Users can jump forward (e.g. Pending -> Cancelled), but NEVER backward (e.g. Cancelled -> Pending).
-
-	weights := map[string]int{
-		domain.OrderStatusPending:             10,
-		domain.OrderStatusPendingVerification: 10,
-		domain.OrderStatusProcessing:          20,
-		domain.OrderStatusShipped:             30,
-		domain.OrderStatusDelivered:           40,
-		domain.OrderStatusPaid:                50,
-		domain.OrderStatusReturned:            60,
-		domain.OrderStatusRefunded:            70,
-		domain.OrderStatusCancelled:           80, // Terminal
-		domain.OrderStatusFake:                90, // Terminal
+	if !domain.IsValidTransition(order.Status, newStatus) {
+		return fmt.Errorf("forbidden transition: cannot move order from '%s' to '%s'", order.Status, newStatus)
 	}
+	return nil
+}
 
-	currentWeight, okCurrent := weights[order.Status]
-	newWeight, okNew := weights[newStatus]
-
-	// If unknown status, allow update to fix data
-	if !okCurrent || !okNew {
+// L9: Declarative Side-Effect Engine
+// Reads from GetSideEffects() in constants.go — no inline business rules.
+func (u *OrderUsecase) handleOrderStateSideEffects(ctx context.Context, order *domain.Order, newStatus, actorID string) error {
+	effects := domain.GetSideEffects(order.Status, newStatus)
+	if len(effects) == 0 {
 		return nil
 	}
 
-	if newWeight < currentWeight {
-		return fmt.Errorf("invalid transition: cannot go backward from '%s' (%d) to '%s' (%d)", order.Status, currentWeight, newStatus, newWeight)
+	for _, effect := range effects {
+		switch effect {
+
+		case domain.SideEffectRestoreStock:
+			// Restore all order items back to inventory
+			slog.Info("L9 Side-Effect: Restoring stock", "order_id", order.ID, "trigger", newStatus)
+			if err := u.restoreOrderStock(ctx, order, "auto_restore_"+newStatus); err != nil {
+				return err
+			}
+
+		case domain.SideEffectDeductStock:
+			// Recovery path: re-deduct stock (cancelled/fake → processing)
+			slog.Info("L9 Side-Effect: Re-deducting stock (recovery)", "order_id", order.ID)
+			if err := u.deductOrderStock(ctx, order, "recovery_rededuct"); err != nil {
+				return err
+			}
+
+		case domain.SideEffectSyncPaymentPaid:
+			slog.Info("L9 Side-Effect: Syncing payment → paid", "order_id", order.ID)
+			if err := u.orderRepo.UpdatePaymentStatus(ctx, order.ID, domain.PaymentStatusPaid); err != nil {
+				return fmt.Errorf("failed to sync payment status to paid: %w", err)
+			}
+
+		case domain.SideEffectSyncPaymentRefund:
+			slog.Info("L9 Side-Effect: Syncing payment → refunded", "order_id", order.ID)
+			if err := u.orderRepo.UpdatePaymentStatus(ctx, order.ID, domain.PaymentStatusRefunded); err != nil {
+				return fmt.Errorf("failed to sync payment status to refunded: %w", err)
+			}
+		}
 	}
-
 	return nil
 }
 
-// L9: No Side Effects (Manual Management Mode)
-func (u *OrderUsecase) handleOrderStateSideEffects(ctx context.Context, order *domain.Order, newStatus, actorID string) error {
-	// User explicitly requested NO AUTOMATED STOCK OR PAYMENT UPDATES.
-	// Operations will be handled manually in Inventory/Product management.
-	// We only update the status field itself (handled by caller).
+// restoreOrderStock adds stock back to inventory for all items in an order.
+func (u *OrderUsecase) restoreOrderStock(ctx context.Context, order *domain.Order, reason string) error {
+	for _, item := range order.Items {
+		targetID := item.ProductID
+		if item.VariantID != nil {
+			targetID = *item.VariantID
+		}
+		if err := u.productRepo.UpdateStock(ctx, targetID, item.Quantity, reason, order.ID); err != nil {
+			return fmt.Errorf("failed to restore stock for item %s: %w", targetID, err)
+		}
+	}
 	return nil
 }
 
-// VerifyOrderPayment verifies a pre-order payment
+// deductOrderStock removes stock from inventory for all items in an order (recovery path).
+func (u *OrderUsecase) deductOrderStock(ctx context.Context, order *domain.Order, reason string) error {
+	for _, item := range order.Items {
+		if item.VariantID == nil {
+			return fmt.Errorf("item %s has no variant ID, cannot re-deduct stock", item.ProductID)
+		}
+		if err := u.productRepo.UpdateStock(ctx, *item.VariantID, -item.Quantity, reason, order.ID); err != nil {
+			return fmt.Errorf("failed to re-deduct stock for variant %s: %w", *item.VariantID, err)
+		}
+	}
+	return nil
+}
+
+// VerifyOrderPayment verifies an advance/pre-order payment.
+// L9: Uses constants, validates both order and payment FSM transitions.
 func (u *OrderUsecase) VerifyOrderPayment(ctx context.Context, orderID, adminID string) error {
 	order, err := u.orderRepo.GetByID(ctx, orderID)
 	if err != nil {
 		return err
 	}
 
-	if order.PaymentMethod == "cod" {
-		return fmt.Errorf("order is a COD order, no advance payment to verify")
+	// L9: Reject COD orders
+	if order.PaymentMethod == domain.PaymentMethodCOD {
+		return fmt.Errorf("order is COD — no advance payment to verify")
 	}
-	if order.Status != "pending_verification" {
-		return fmt.Errorf("order status is %s, cannot verify payment", order.Status)
+
+	// L9: Validate order status transition
+	if !domain.IsValidTransition(order.Status, domain.OrderStatusProcessing) {
+		return fmt.Errorf("cannot verify payment: order status is '%s', expected '%s'",
+			order.Status, domain.OrderStatusPendingVerification)
+	}
+
+	// L9: Validate payment status transition
+	newPaymentStatus := domain.PaymentStatusPartialPaid
+	if !order.IsPreorder {
+		// Full advance payment → mark as paid
+		newPaymentStatus = domain.PaymentStatusPaid
+	}
+	if !domain.IsValidPaymentTransition(order.PaymentStatus, newPaymentStatus) {
+		return fmt.Errorf("cannot verify payment: payment status transition '%s' → '%s' is forbidden",
+			order.PaymentStatus, newPaymentStatus)
 	}
 
 	oldStatus := order.Status
 
-	// Atomic Update: Status -> processing, PaymentStatus -> partial_paid
 	return u.txManager.Do(ctx, func(txCtx context.Context) error {
-		if err := u.orderRepo.UpdateStatus(txCtx, orderID, "processing"); err != nil {
+		if err := u.orderRepo.UpdateStatus(txCtx, orderID, domain.OrderStatusProcessing); err != nil {
 			return err
 		}
-		if err := u.orderRepo.UpdatePaymentStatus(txCtx, orderID, "partial_paid"); err != nil {
+		if err := u.orderRepo.UpdatePaymentStatus(txCtx, orderID, newPaymentStatus); err != nil {
 			return err
 		}
 
-		// Record History
-		reason := "Payment Verified"
+		reason := fmt.Sprintf("Payment verified by admin. Payment: %s → %s", order.PaymentStatus, newPaymentStatus)
 		history := &domain.OrderHistory{
 			OrderID:        orderID,
 			PreviousStatus: &oldStatus,
-			NewStatus:      "processing",
+			NewStatus:      domain.OrderStatusProcessing,
 			Reason:         &reason,
 			CreatedBy:      &adminID,
 		}
-		if err := u.orderRepo.CreateOrderHistory(txCtx, history); err != nil {
-			return err
-		}
-
-		return nil
+		return u.orderRepo.CreateOrderHistory(txCtx, history)
 	})
 }
 
-// UpdatePaymentStatus updates the payment status of an order manually
+// UpdatePaymentStatus updates the payment status of an order manually.
+// L9: Enforces ValidPaymentTransitions FSM — rejects invalid changes.
 func (u *OrderUsecase) UpdatePaymentStatus(ctx context.Context, orderID, newStatus, actorID string) error {
 	order, err := u.orderRepo.GetByID(ctx, orderID)
 	if err != nil {
@@ -705,7 +760,13 @@ func (u *OrderUsecase) UpdatePaymentStatus(ctx context.Context, orderID, newStat
 
 	oldPaymentStatus := order.PaymentStatus
 	if oldPaymentStatus == newStatus {
-		return nil
+		return nil // Idempotent: no-op if already at target status
+	}
+
+	// L9: Enforce Payment FSM
+	if !domain.IsValidPaymentTransition(oldPaymentStatus, newStatus) {
+		return fmt.Errorf("forbidden payment transition: cannot change payment from '%s' to '%s'",
+			oldPaymentStatus, newStatus)
 	}
 
 	return u.txManager.Do(ctx, func(txCtx context.Context) error {
@@ -713,23 +774,20 @@ func (u *OrderUsecase) UpdatePaymentStatus(ctx context.Context, orderID, newStat
 			return err
 		}
 
-		// Record History
-		reason := fmt.Sprintf("Payment status changed: %s -> %s", oldPaymentStatus, newStatus)
+		reason := fmt.Sprintf("Payment status: %s → %s", oldPaymentStatus, newStatus)
 		history := &domain.OrderHistory{
 			OrderID:        orderID,
-			PreviousStatus: &order.Status, // Status didn't change
+			PreviousStatus: &order.Status,
 			NewStatus:      order.Status,
 			Reason:         &reason,
 			CreatedBy:      &actorID,
 		}
-		if err := u.orderRepo.CreateOrderHistory(txCtx, history); err != nil {
-			return err
-		}
-		return nil
+		return u.orderRepo.CreateOrderHistory(txCtx, history)
 	})
 }
 
-// ProcessRefund handles the refund logic
+// ProcessRefund handles the refund logic.
+// L9: Validates FSM before auto-transitioning, uses shared stock helpers.
 func (u *OrderUsecase) ProcessRefund(ctx context.Context, orderID string, amount float64, reason string, restock bool, adminID string) error {
 	// 1. Get Order
 	order, err := u.orderRepo.GetByID(ctx, orderID)
@@ -737,7 +795,7 @@ func (u *OrderUsecase) ProcessRefund(ctx context.Context, orderID string, amount
 		return err
 	}
 
-	// 2. Validate Refund
+	// 2. Validate Refund Amount
 	if amount <= 0 {
 		return fmt.Errorf("refund amount must be positive")
 	}
@@ -746,64 +804,53 @@ func (u *OrderUsecase) ProcessRefund(ctx context.Context, orderID string, amount
 		return fmt.Errorf("cannot refund %.2f (max refundable: %.2f)", amount, remainingRefundable)
 	}
 
-	// Determine if status should change (e.g. if full refund -> refunded)
-	// For now, partial refund doesn't change order status usually, but full refund might.
-	// L9: Let's assume explicit status change is handled separately via UpdateStatus,
-	// OR if restock is true, maybe we should mark as refunded?
-	// Current logic just updates refunded amount.
-	// Ensure we log this action.
+	// 3. Determine if this is a full refund (triggers status change)
+	isFullRefund := restock && amount >= remainingRefundable
 
-	// 3. Execute Transaction
+	// L9: If full refund, validate FSM allows the transition BEFORE entering the transaction
+	if isFullRefund {
+		if !domain.IsValidTransition(order.Status, domain.OrderStatusRefunded) {
+			return fmt.Errorf("cannot auto-refund: transition from '%s' to 'refunded' is forbidden by FSM", order.Status)
+		}
+	}
+
+	// 4. Execute Transaction
 	return u.txManager.Do(ctx, func(txCtx context.Context) error {
-		// Create Refund & Update Order
+		// Create Refund record
 		if err := u.orderRepo.CreateRefund(txCtx, orderID, amount, reason, restock, &adminID); err != nil {
 			return err
 		}
 
-		// Handle Stock Restoration
+		// Restock if requested (using shared helper)
 		if restock {
-			for _, item := range order.Items {
-				targetID := item.ProductID
-				if item.VariantID != nil {
-					targetID = *item.VariantID
-				}
-				// Restock
-				if err := u.productRepo.UpdateStock(txCtx, targetID, item.Quantity, "refund_restock", orderID); err != nil {
-					return fmt.Errorf("failed to restock item %s: %v", targetID, err)
-				}
-			}
-		}
-
-		// Record History (Log the refund action)
-		// Previous status is same as current if we don't change it.
-		// We log "refunded" action but status might remain "delivered" or "cancelled".
-		// Let's log it as a status update if we change status, but here we are just refunding money.
-		// But the audit log is `order_history` which tracks status.
-		// Maybe we just log a "note" entry? The schema requires new_status.
-		// Let's use current status as new_status but add reason "Refunded X Amount".
-
-		histReason := fmt.Sprintf("Refunded %.2f: %s", amount, reason)
-		history := &domain.OrderHistory{
-			OrderID:        orderID,
-			PreviousStatus: &order.Status,
-			NewStatus:      order.Status, // Status didn't change unless we force it
-			Reason:         &histReason,
-			CreatedBy:      &adminID,
-		}
-		// If it was a full refund and restock, maybe auto-set to refunded?
-		// User asked for robust, so automation is good.
-		if restock && amount >= remainingRefundable {
-			history.NewStatus = domain.OrderStatusRefunded
-			if err := u.orderRepo.UpdateStatus(txCtx, orderID, domain.OrderStatusRefunded); err != nil {
+			if err := u.restoreOrderStock(txCtx, order, "refund_restock"); err != nil {
 				return err
 			}
 		}
 
-		if err := u.orderRepo.CreateOrderHistory(txCtx, history); err != nil {
-			return err
+		// Build history entry
+		histReason := fmt.Sprintf("Refunded %.2f BDT: %s", amount, reason)
+		history := &domain.OrderHistory{
+			OrderID:        orderID,
+			PreviousStatus: &order.Status,
+			NewStatus:      order.Status,
+			Reason:         &histReason,
+			CreatedBy:      &adminID,
 		}
 
-		return nil
+		// L9: Full refund + restock → auto-transition to refunded (FSM already validated above)
+		if isFullRefund {
+			history.NewStatus = domain.OrderStatusRefunded
+			if err := u.orderRepo.UpdateStatus(txCtx, orderID, domain.OrderStatusRefunded); err != nil {
+				return err
+			}
+			// Sync payment status via side-effect engine
+			if err := u.orderRepo.UpdatePaymentStatus(txCtx, orderID, domain.PaymentStatusRefunded); err != nil {
+				return err
+			}
+		}
+
+		return u.orderRepo.CreateOrderHistory(txCtx, history)
 	})
 }
 

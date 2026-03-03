@@ -502,12 +502,35 @@ func (q *Queries) GetCartWithItems(ctx context.Context, userID pgtype.UUID) ([]G
 }
 
 const getOrderByID = `-- name: GetOrderByID :one
-SELECT id, user_id, status, total_amount, shipping_address, payment_method, payment_status, created_at, updated_at, paid_amount, payment_details, is_preorder, refunded_amount, shipping_fee FROM orders WHERE id = $1
+SELECT o.id, o.user_id, o.status, o.total_amount, o.shipping_address, o.payment_method, o.payment_status, o.created_at, o.updated_at, o.paid_amount, o.payment_details, o.is_preorder, o.refunded_amount, o.shipping_fee, u.email, u.first_name, u.last_name
+FROM orders o
+JOIN users u ON u.id = o.user_id
+WHERE o.id = $1
 `
 
-func (q *Queries) GetOrderByID(ctx context.Context, id pgtype.UUID) (Order, error) {
+type GetOrderByIDRow struct {
+	ID              pgtype.UUID      `json:"id"`
+	UserID          pgtype.UUID      `json:"user_id"`
+	Status          string           `json:"status"`
+	TotalAmount     pgtype.Numeric   `json:"total_amount"`
+	ShippingAddress []byte           `json:"shipping_address"`
+	PaymentMethod   *string          `json:"payment_method"`
+	PaymentStatus   *string          `json:"payment_status"`
+	CreatedAt       pgtype.Timestamp `json:"created_at"`
+	UpdatedAt       pgtype.Timestamp `json:"updated_at"`
+	PaidAmount      pgtype.Numeric   `json:"paid_amount"`
+	PaymentDetails  []byte           `json:"payment_details"`
+	IsPreorder      bool             `json:"is_preorder"`
+	RefundedAmount  pgtype.Numeric   `json:"refunded_amount"`
+	ShippingFee     pgtype.Numeric   `json:"shipping_fee"`
+	Email           string           `json:"email"`
+	FirstName       *string          `json:"first_name"`
+	LastName        *string          `json:"last_name"`
+}
+
+func (q *Queries) GetOrderByID(ctx context.Context, id pgtype.UUID) (GetOrderByIDRow, error) {
 	row := q.db.QueryRow(ctx, getOrderByID, id)
-	var i Order
+	var i GetOrderByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -523,6 +546,9 @@ func (q *Queries) GetOrderByID(ctx context.Context, id pgtype.UUID) (Order, erro
 		&i.IsPreorder,
 		&i.RefundedAmount,
 		&i.ShippingFee,
+		&i.Email,
+		&i.FirstName,
+		&i.LastName,
 	)
 	return i, err
 }

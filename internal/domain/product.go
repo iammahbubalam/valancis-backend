@@ -173,6 +173,7 @@ type ProductRepository interface {
 	GetVariantList(ctx context.Context, filter VariantListFilter) ([]VariantWithProduct, int64, error)
 
 	GetVariantByID(ctx context.Context, id string) (*Variant, error)
+	GetVariantByIDForUpdate(ctx context.Context, id string) (*Variant, error)
 	// Admin Management
 	CreateProduct(ctx context.Context, product *Product) error
 	UpdateProduct(ctx context.Context, product *Product) error

@@ -109,7 +109,10 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: GetOrderByID :one
-SELECT * FROM orders WHERE id = $1;
+SELECT o.*, u.email, u.first_name, u.last_name
+FROM orders o
+JOIN users u ON u.id = o.user_id
+WHERE o.id = $1;
 
 -- name: GetOrdersByUserID :many
 SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC;
