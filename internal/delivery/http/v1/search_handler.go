@@ -2,6 +2,7 @@ package v1
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -48,6 +49,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 
 	products, pagination, err := h.searchUC.Search(r.Context(), query, page, limit)
 	if err != nil {
+		fmt.Printf("Search error: %v\n", err)
 		http.Error(w, "Search failed", http.StatusInternalServerError)
 		return
 	}

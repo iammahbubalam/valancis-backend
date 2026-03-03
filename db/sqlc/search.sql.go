@@ -14,7 +14,13 @@ import (
 const countSearchProducts = `-- name: CountSearchProducts :one
 SELECT COUNT(*)
 FROM products
-WHERE search_vector @@ websearch_to_tsquery('english', $1)
+WHERE (
+    search_vector @@ websearch_to_tsquery('english', $1)
+    OR name ILIKE '%' || $1 || '%'
+    OR similarity(name, $1) > 0.15
+    OR brand ILIKE '%' || $1 || '%'
+    OR similarity(COALESCE(brand, ''), $1) > 0.15
+)
   AND ($2::boolean IS NULL OR is_active = $2)
 `
 
@@ -32,9 +38,17 @@ func (q *Queries) CountSearchProducts(ctx context.Context, arg CountSearchProduc
 
 const searchProducts = `-- name: SearchProducts :many
 SELECT id, name, slug, description, base_price, sale_price, stock_status, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info,
-       ts_rank(search_vector, websearch_to_tsquery('english', $3)) as rank
+       COALESCE((ts_rank(search_vector, websearch_to_tsquery('english', $3)) +
+        similarity(name, $3) * 2.0 +
+        similarity(COALESCE(brand, ''), $3))::float8, 0)::float8 as rank
 FROM products
-WHERE search_vector @@ websearch_to_tsquery('english', $3)
+WHERE (
+    search_vector @@ websearch_to_tsquery('english', $3)
+    OR name ILIKE '%' || $3 || '%'
+    OR similarity(name, $3) > 0.15
+    OR brand ILIKE '%' || $3 || '%'
+    OR similarity(COALESCE(brand, ''), $3) > 0.15
+)
   AND ($4::boolean IS NULL OR is_active = $4)
 ORDER BY rank DESC, created_at DESC
 LIMIT $1 OFFSET $2
@@ -70,7 +84,7 @@ type SearchProductsRow struct {
 	Brand           *string          `json:"brand"`
 	Tags            []string         `json:"tags"`
 	WarrantyInfo    []byte           `json:"warranty_info"`
-	Rank            float32          `json:"rank"`
+	Rank            float64          `json:"rank"`
 }
 
 func (q *Queries) SearchProducts(ctx context.Context, arg SearchProductsParams) ([]SearchProductsRow, error) {
