@@ -53,7 +53,11 @@ components:
           type: integer
         stockStatus:
           type: string
-          enum: [in_stock, out_of_stock, pre_order]
+          enum: [in_stock, out_of_stock]
+        isPreorder:
+          type: boolean
+        preorderDepositAmount:
+          type: number
         isActive:
           type: boolean
         categoryId:

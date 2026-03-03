@@ -5,7 +5,7 @@ SELECT * FROM carts WHERE user_id = $1;
 INSERT INTO carts (user_id) VALUES ($1) RETURNING *;
 
 -- name: GetCartItems :many
-SELECT ci.*, p.name, p.slug, p.base_price, p.sale_price, p.media, v.stock, v.sku
+SELECT ci.*, p.name, p.slug, p.base_price, p.sale_price, p.media, p.is_preorder, p.preorder_deposit_amount, v.stock, v.sku
 FROM cart_items ci
 JOIN products p ON p.id = ci.product_id
 JOIN variants v ON v.id = ci.variant_id
@@ -25,6 +25,8 @@ SELECT
     p.sale_price,
     p.media,
     p.stock_status,
+    p.is_preorder,
+    p.preorder_deposit_amount,
     v.stock,
     v.sku as variant_sku,
     v.name as variant_name,
@@ -52,7 +54,7 @@ WITH
     SELECT v.id FROM variants v
     JOIN products p ON p.id = v.product_id
     WHERE v.id = sqlc.arg(variant_id)
-      AND (v.stock >= sqlc.arg(quantity) OR p.stock_status = 'pre_order')
+      AND v.stock >= sqlc.arg(quantity)
       AND p.is_active = TRUE
   ),
   existing_item AS (
@@ -81,7 +83,7 @@ WITH
     SELECT * FROM inserted
   )
 SELECT r.id, r.cart_id, r.product_id, r.variant_id, r.quantity,
-       p.name, p.slug, p.base_price, p.sale_price, p.media, v.stock, v.sku as variant_sku, v.name as variant_name, v.images as variant_images,
+       p.name, p.slug, p.base_price, p.sale_price, p.media, p.is_preorder, p.preorder_deposit_amount, v.stock, v.sku as variant_sku, v.name as variant_name, v.images as variant_images,
        v.price as variant_price, v.sale_price as variant_sale_price
 FROM results r
 JOIN products p ON p.id = r.product_id
@@ -119,6 +121,7 @@ JOIN users u ON u.id = o.user_id
 WHERE 
     (sqlc.narg('status')::text IS NULL OR o.status = sqlc.narg('status')) AND
     (sqlc.narg('payment_status')::text IS NULL OR o.payment_status = sqlc.narg('payment_status')) AND
+    (sqlc.narg('payment_method')::text IS NULL OR o.payment_method = sqlc.narg('payment_method')) AND
     (sqlc.narg('is_preorder')::boolean IS NULL OR o.is_preorder = sqlc.narg('is_preorder')) AND
     (sqlc.narg('search')::text IS NULL OR 
         o.id::text ILIKE '%' || sqlc.narg('search') || '%' OR 
@@ -136,6 +139,7 @@ JOIN users u ON u.id = o.user_id
 WHERE 
     (sqlc.narg('status')::text IS NULL OR o.status = sqlc.narg('status')) AND
     (sqlc.narg('payment_status')::text IS NULL OR o.payment_status = sqlc.narg('payment_status')) AND
+    (sqlc.narg('payment_method')::text IS NULL OR o.payment_method = sqlc.narg('payment_method')) AND
     (sqlc.narg('is_preorder')::boolean IS NULL OR o.is_preorder = sqlc.narg('is_preorder')) AND
     (sqlc.narg('search')::text IS NULL OR 
         o.id::text ILIKE '%' || sqlc.narg('search') || '%' OR 

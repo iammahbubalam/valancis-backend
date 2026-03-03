@@ -37,7 +37,7 @@ func (q *Queries) CountSearchProducts(ctx context.Context, arg CountSearchProduc
 }
 
 const searchProducts = `-- name: SearchProducts :many
-SELECT id, name, slug, description, base_price, sale_price, stock_status, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info,
+SELECT id, name, slug, description, base_price, sale_price, stock_status, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info, is_preorder, preorder_deposit_amount,
        COALESCE((ts_rank(search_vector, websearch_to_tsquery('english', $3)) +
         similarity(name, $3) * 2.0 +
         similarity(COALESCE(brand, ''), $3))::float8, 0)::float8 as rank
@@ -62,29 +62,31 @@ type SearchProductsParams struct {
 }
 
 type SearchProductsRow struct {
-	ID              pgtype.UUID      `json:"id"`
-	Name            string           `json:"name"`
-	Slug            string           `json:"slug"`
-	Description     *string          `json:"description"`
-	BasePrice       pgtype.Numeric   `json:"base_price"`
-	SalePrice       pgtype.Numeric   `json:"sale_price"`
-	StockStatus     *string          `json:"stock_status"`
-	IsFeatured      bool             `json:"is_featured"`
-	IsActive        bool             `json:"is_active"`
-	Media           []byte           `json:"media"`
-	Attributes      []byte           `json:"attributes"`
-	Specifications  []byte           `json:"specifications"`
-	CreatedAt       pgtype.Timestamp `json:"created_at"`
-	UpdatedAt       pgtype.Timestamp `json:"updated_at"`
-	SearchVector    interface{}      `json:"search_vector"`
-	MetaTitle       *string          `json:"meta_title"`
-	MetaDescription *string          `json:"meta_description"`
-	MetaKeywords    *string          `json:"meta_keywords"`
-	OgImage         *string          `json:"og_image"`
-	Brand           *string          `json:"brand"`
-	Tags            []string         `json:"tags"`
-	WarrantyInfo    []byte           `json:"warranty_info"`
-	Rank            float64          `json:"rank"`
+	ID                    pgtype.UUID      `json:"id"`
+	Name                  string           `json:"name"`
+	Slug                  string           `json:"slug"`
+	Description           *string          `json:"description"`
+	BasePrice             pgtype.Numeric   `json:"base_price"`
+	SalePrice             pgtype.Numeric   `json:"sale_price"`
+	StockStatus           *string          `json:"stock_status"`
+	IsFeatured            bool             `json:"is_featured"`
+	IsActive              bool             `json:"is_active"`
+	Media                 []byte           `json:"media"`
+	Attributes            []byte           `json:"attributes"`
+	Specifications        []byte           `json:"specifications"`
+	CreatedAt             pgtype.Timestamp `json:"created_at"`
+	UpdatedAt             pgtype.Timestamp `json:"updated_at"`
+	SearchVector          interface{}      `json:"search_vector"`
+	MetaTitle             *string          `json:"meta_title"`
+	MetaDescription       *string          `json:"meta_description"`
+	MetaKeywords          *string          `json:"meta_keywords"`
+	OgImage               *string          `json:"og_image"`
+	Brand                 *string          `json:"brand"`
+	Tags                  []string         `json:"tags"`
+	WarrantyInfo          []byte           `json:"warranty_info"`
+	IsPreorder            bool             `json:"is_preorder"`
+	PreorderDepositAmount pgtype.Numeric   `json:"preorder_deposit_amount"`
+	Rank                  float64          `json:"rank"`
 }
 
 func (q *Queries) SearchProducts(ctx context.Context, arg SearchProductsParams) ([]SearchProductsRow, error) {
@@ -124,6 +126,8 @@ func (q *Queries) SearchProducts(ctx context.Context, arg SearchProductsParams) 
 			&i.Brand,
 			&i.Tags,
 			&i.WarrantyInfo,
+			&i.IsPreorder,
+			&i.PreorderDepositAmount,
 			&i.Rank,
 		); err != nil {
 			return nil, err

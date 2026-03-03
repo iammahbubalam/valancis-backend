@@ -22,13 +22,13 @@ INSERT INTO products (
     stock_status, is_featured, is_active, 
     media, attributes, specifications, 
     meta_title, meta_description, meta_keywords, og_image,
-    brand, tags, warranty_info
+    brand, tags, warranty_info, is_preorder, preorder_deposit_amount
 ) VALUES (
     $1, $2, $3, $4, $5, 
     $6, $7, $8, 
     $9, $10, $11, 
     $12, $13, $14, $15,
-    $16, $17, $18
+    $16, $17, $18, $19, $20
 ) RETURNING *;
 
 -- name: UpdateProduct :one
@@ -37,7 +37,7 @@ SET name = $2, slug = $3, description = $4, base_price = $5, sale_price = $6,
     stock_status = $7, is_featured = $8, 
     is_active = $9, media = $10, attributes = $11, specifications = $12,
     meta_title = $13, meta_description = $14, meta_keywords = $15, og_image = $16,
-    brand = $17, tags = $18, warranty_info = $19
+    brand = $17, tags = $18, warranty_info = $19, is_preorder = $20, preorder_deposit_amount = $21
 WHERE id = $1
 RETURNING *;
 

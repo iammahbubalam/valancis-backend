@@ -3,12 +3,12 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"time"
 	"valancis-backend/config"
 	"valancis-backend/internal/domain"
 	"valancis-backend/pkg/cache"
 	"valancis-backend/pkg/storage"
 	"valancis-backend/pkg/utils"
-	"time"
 )
 
 type CatalogUsecase struct {
@@ -153,7 +153,7 @@ func (uc *CatalogUsecase) AdjustStock(ctx context.Context, variantID string, cha
 	}
 
 	// 2. Validate Negative Stock
-	// Allow negative stock only if explicitly allowed (e.g., pre_order).
+	// Allow negative stock only if explicitly allowed (e.g., when is_preorder is true).
 	// Currently enforcing strict non-negative policy for standard flow.
 	newStock := variant.Stock + changeAmount
 	if newStock < 0 {

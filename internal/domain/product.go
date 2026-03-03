@@ -62,9 +62,11 @@ type Product struct {
 	OGImage         string       `json:"ogImage"`
 
 	// L9 Fields
-	Brand        string   `json:"brand"`
-	Tags         []string `json:"tags"`
-	WarrantyInfo JSONB    `json:"warrantyInfo"`
+	Brand                 string   `json:"brand"`
+	Tags                  []string `json:"tags"`
+	WarrantyInfo          JSONB    `json:"warrantyInfo"`
+	IsPreorder            bool     `json:"isPreorder"`
+	PreorderDepositAmount float64  `json:"preorderDepositAmount"`
 }
 
 type Collection struct {

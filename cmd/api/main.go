@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
+	"time"
 	"valancis-backend/config"
 	"valancis-backend/internal/delivery/http/middleware"
 	v1 "valancis-backend/internal/delivery/http/v1"
@@ -16,8 +18,6 @@ import (
 	"valancis-backend/pkg/logger"
 	"valancis-backend/pkg/storage"
 	"valancis-backend/pkg/utils"
-	"syscall"
-	"time"
 
 	"github.com/NYTimes/gziphandler"
 )

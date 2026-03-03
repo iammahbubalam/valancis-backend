@@ -47,18 +47,20 @@ JOIN users u ON u.id = o.user_id
 WHERE 
     ($1::text IS NULL OR o.status = $1) AND
     ($2::text IS NULL OR o.payment_status = $2) AND
-    ($3::boolean IS NULL OR o.is_preorder = $3) AND
-    ($4::text IS NULL OR 
-        o.id::text ILIKE '%' || $4 || '%' OR 
-        u.email ILIKE '%' || $4 || '%' OR 
-        o.payment_details->>'transaction_id' ILIKE '%' || $4 || '%' OR
-        o.payment_details->>'sender_number' ILIKE '%' || $4 || '%'
+    ($3::text IS NULL OR o.payment_method = $3) AND
+    ($4::boolean IS NULL OR o.is_preorder = $4) AND
+    ($5::text IS NULL OR 
+        o.id::text ILIKE '%' || $5 || '%' OR 
+        u.email ILIKE '%' || $5 || '%' OR 
+        o.payment_details->>'transaction_id' ILIKE '%' || $5 || '%' OR
+        o.payment_details->>'sender_number' ILIKE '%' || $5 || '%'
     )
 `
 
 type CountOrdersParams struct {
 	Status        *string `json:"status"`
 	PaymentStatus *string `json:"payment_status"`
+	PaymentMethod *string `json:"payment_method"`
 	IsPreorder    *bool   `json:"is_preorder"`
 	Search        *string `json:"search"`
 }
@@ -67,6 +69,7 @@ func (q *Queries) CountOrders(ctx context.Context, arg CountOrdersParams) (int64
 	row := q.db.QueryRow(ctx, countOrders,
 		arg.Status,
 		arg.PaymentStatus,
+		arg.PaymentMethod,
 		arg.IsPreorder,
 		arg.Search,
 	)
@@ -219,12 +222,13 @@ JOIN users u ON u.id = o.user_id
 WHERE 
     ($3::text IS NULL OR o.status = $3) AND
     ($4::text IS NULL OR o.payment_status = $4) AND
-    ($5::boolean IS NULL OR o.is_preorder = $5) AND
-    ($6::text IS NULL OR 
-        o.id::text ILIKE '%' || $6 || '%' OR 
-        u.email ILIKE '%' || $6 || '%' OR 
-        o.payment_details->>'transaction_id' ILIKE '%' || $6 || '%' OR
-        o.payment_details->>'sender_number' ILIKE '%' || $6 || '%'
+    ($5::text IS NULL OR o.payment_method = $5) AND
+    ($6::boolean IS NULL OR o.is_preorder = $6) AND
+    ($7::text IS NULL OR 
+        o.id::text ILIKE '%' || $7 || '%' OR 
+        u.email ILIKE '%' || $7 || '%' OR 
+        o.payment_details->>'transaction_id' ILIKE '%' || $7 || '%' OR
+        o.payment_details->>'sender_number' ILIKE '%' || $7 || '%'
     )
 ORDER BY o.created_at DESC
 LIMIT $1 OFFSET $2
@@ -235,6 +239,7 @@ type GetAllOrdersParams struct {
 	Offset        int32   `json:"offset"`
 	Status        *string `json:"status"`
 	PaymentStatus *string `json:"payment_status"`
+	PaymentMethod *string `json:"payment_method"`
 	IsPreorder    *bool   `json:"is_preorder"`
 	Search        *string `json:"search"`
 }
@@ -265,6 +270,7 @@ func (q *Queries) GetAllOrders(ctx context.Context, arg GetAllOrdersParams) ([]G
 		arg.Offset,
 		arg.Status,
 		arg.PaymentStatus,
+		arg.PaymentMethod,
 		arg.IsPreorder,
 		arg.Search,
 	)
@@ -343,7 +349,7 @@ func (q *Queries) GetCartItemByProductID(ctx context.Context, arg GetCartItemByP
 }
 
 const getCartItems = `-- name: GetCartItems :many
-SELECT ci.id, ci.cart_id, ci.product_id, ci.variant_id, ci.quantity, p.name, p.slug, p.base_price, p.sale_price, p.media, v.stock, v.sku
+SELECT ci.id, ci.cart_id, ci.product_id, ci.variant_id, ci.quantity, p.name, p.slug, p.base_price, p.sale_price, p.media, p.is_preorder, p.preorder_deposit_amount, v.stock, v.sku
 FROM cart_items ci
 JOIN products p ON p.id = ci.product_id
 JOIN variants v ON v.id = ci.variant_id
@@ -351,18 +357,20 @@ WHERE ci.cart_id = $1
 `
 
 type GetCartItemsRow struct {
-	ID        pgtype.UUID    `json:"id"`
-	CartID    pgtype.UUID    `json:"cart_id"`
-	ProductID pgtype.UUID    `json:"product_id"`
-	VariantID pgtype.UUID    `json:"variant_id"`
-	Quantity  int32          `json:"quantity"`
-	Name      string         `json:"name"`
-	Slug      string         `json:"slug"`
-	BasePrice pgtype.Numeric `json:"base_price"`
-	SalePrice pgtype.Numeric `json:"sale_price"`
-	Media     []byte         `json:"media"`
-	Stock     int32          `json:"stock"`
-	Sku       *string        `json:"sku"`
+	ID                    pgtype.UUID    `json:"id"`
+	CartID                pgtype.UUID    `json:"cart_id"`
+	ProductID             pgtype.UUID    `json:"product_id"`
+	VariantID             pgtype.UUID    `json:"variant_id"`
+	Quantity              int32          `json:"quantity"`
+	Name                  string         `json:"name"`
+	Slug                  string         `json:"slug"`
+	BasePrice             pgtype.Numeric `json:"base_price"`
+	SalePrice             pgtype.Numeric `json:"sale_price"`
+	Media                 []byte         `json:"media"`
+	IsPreorder            bool           `json:"is_preorder"`
+	PreorderDepositAmount pgtype.Numeric `json:"preorder_deposit_amount"`
+	Stock                 int32          `json:"stock"`
+	Sku                   *string        `json:"sku"`
 }
 
 func (q *Queries) GetCartItems(ctx context.Context, cartID pgtype.UUID) ([]GetCartItemsRow, error) {
@@ -385,6 +393,8 @@ func (q *Queries) GetCartItems(ctx context.Context, cartID pgtype.UUID) ([]GetCa
 			&i.BasePrice,
 			&i.SalePrice,
 			&i.Media,
+			&i.IsPreorder,
+			&i.PreorderDepositAmount,
 			&i.Stock,
 			&i.Sku,
 		); err != nil {
@@ -412,6 +422,8 @@ SELECT
     p.sale_price,
     p.media,
     p.stock_status,
+    p.is_preorder,
+    p.preorder_deposit_amount,
     v.stock,
     v.sku as variant_sku,
     v.name as variant_name,
@@ -426,24 +438,26 @@ WHERE c.user_id = $1
 `
 
 type GetCartWithItemsRow struct {
-	CartID           pgtype.UUID    `json:"cart_id"`
-	UserID           pgtype.UUID    `json:"user_id"`
-	ItemID           pgtype.UUID    `json:"item_id"`
-	ProductID        pgtype.UUID    `json:"product_id"`
-	VariantID        pgtype.UUID    `json:"variant_id"`
-	Quantity         *int32         `json:"quantity"`
-	Name             *string        `json:"name"`
-	Slug             *string        `json:"slug"`
-	BasePrice        pgtype.Numeric `json:"base_price"`
-	SalePrice        pgtype.Numeric `json:"sale_price"`
-	Media            []byte         `json:"media"`
-	StockStatus      *string        `json:"stock_status"`
-	Stock            *int32         `json:"stock"`
-	VariantSku       *string        `json:"variant_sku"`
-	VariantName      *string        `json:"variant_name"`
-	VariantImages    []string       `json:"variant_images"`
-	VariantPrice     pgtype.Numeric `json:"variant_price"`
-	VariantSalePrice pgtype.Numeric `json:"variant_sale_price"`
+	CartID                pgtype.UUID    `json:"cart_id"`
+	UserID                pgtype.UUID    `json:"user_id"`
+	ItemID                pgtype.UUID    `json:"item_id"`
+	ProductID             pgtype.UUID    `json:"product_id"`
+	VariantID             pgtype.UUID    `json:"variant_id"`
+	Quantity              *int32         `json:"quantity"`
+	Name                  *string        `json:"name"`
+	Slug                  *string        `json:"slug"`
+	BasePrice             pgtype.Numeric `json:"base_price"`
+	SalePrice             pgtype.Numeric `json:"sale_price"`
+	Media                 []byte         `json:"media"`
+	StockStatus           *string        `json:"stock_status"`
+	IsPreorder            *bool          `json:"is_preorder"`
+	PreorderDepositAmount pgtype.Numeric `json:"preorder_deposit_amount"`
+	Stock                 *int32         `json:"stock"`
+	VariantSku            *string        `json:"variant_sku"`
+	VariantName           *string        `json:"variant_name"`
+	VariantImages         []string       `json:"variant_images"`
+	VariantPrice          pgtype.Numeric `json:"variant_price"`
+	VariantSalePrice      pgtype.Numeric `json:"variant_sale_price"`
 }
 
 func (q *Queries) GetCartWithItems(ctx context.Context, userID pgtype.UUID) ([]GetCartWithItemsRow, error) {
@@ -468,6 +482,8 @@ func (q *Queries) GetCartWithItems(ctx context.Context, userID pgtype.UUID) ([]G
 			&i.SalePrice,
 			&i.Media,
 			&i.StockStatus,
+			&i.IsPreorder,
+			&i.PreorderDepositAmount,
 			&i.Stock,
 			&i.VariantSku,
 			&i.VariantName,
@@ -717,7 +733,7 @@ WITH
     SELECT v.id FROM variants v
     JOIN products p ON p.id = v.product_id
     WHERE v.id = $3
-      AND (v.stock >= $4 OR p.stock_status = 'pre_order')
+      AND v.stock >= $4
       AND p.is_active = TRUE
   ),
   existing_item AS (
@@ -746,7 +762,7 @@ WITH
     SELECT id, cart_id, product_id, variant_id, quantity FROM inserted
   )
 SELECT r.id, r.cart_id, r.product_id, r.variant_id, r.quantity,
-       p.name, p.slug, p.base_price, p.sale_price, p.media, v.stock, v.sku as variant_sku, v.name as variant_name, v.images as variant_images,
+       p.name, p.slug, p.base_price, p.sale_price, p.media, p.is_preorder, p.preorder_deposit_amount, v.stock, v.sku as variant_sku, v.name as variant_name, v.images as variant_images,
        v.price as variant_price, v.sale_price as variant_sale_price
 FROM results r
 JOIN products p ON p.id = r.product_id
@@ -762,22 +778,24 @@ type UpsertCartItemAtomicParams struct {
 }
 
 type UpsertCartItemAtomicRow struct {
-	ID               pgtype.UUID    `json:"id"`
-	CartID           pgtype.UUID    `json:"cart_id"`
-	ProductID        pgtype.UUID    `json:"product_id"`
-	VariantID        pgtype.UUID    `json:"variant_id"`
-	Quantity         int32          `json:"quantity"`
-	Name             string         `json:"name"`
-	Slug             string         `json:"slug"`
-	BasePrice        pgtype.Numeric `json:"base_price"`
-	SalePrice        pgtype.Numeric `json:"sale_price"`
-	Media            []byte         `json:"media"`
-	Stock            int32          `json:"stock"`
-	VariantSku       *string        `json:"variant_sku"`
-	VariantName      string         `json:"variant_name"`
-	VariantImages    []string       `json:"variant_images"`
-	VariantPrice     pgtype.Numeric `json:"variant_price"`
-	VariantSalePrice pgtype.Numeric `json:"variant_sale_price"`
+	ID                    pgtype.UUID    `json:"id"`
+	CartID                pgtype.UUID    `json:"cart_id"`
+	ProductID             pgtype.UUID    `json:"product_id"`
+	VariantID             pgtype.UUID    `json:"variant_id"`
+	Quantity              int32          `json:"quantity"`
+	Name                  string         `json:"name"`
+	Slug                  string         `json:"slug"`
+	BasePrice             pgtype.Numeric `json:"base_price"`
+	SalePrice             pgtype.Numeric `json:"sale_price"`
+	Media                 []byte         `json:"media"`
+	IsPreorder            bool           `json:"is_preorder"`
+	PreorderDepositAmount pgtype.Numeric `json:"preorder_deposit_amount"`
+	Stock                 int32          `json:"stock"`
+	VariantSku            *string        `json:"variant_sku"`
+	VariantName           string         `json:"variant_name"`
+	VariantImages         []string       `json:"variant_images"`
+	VariantPrice          pgtype.Numeric `json:"variant_price"`
+	VariantSalePrice      pgtype.Numeric `json:"variant_sale_price"`
 }
 
 // L9 FIX: Simplified atomic upsert without expression-based conflict target
@@ -807,6 +825,8 @@ func (q *Queries) UpsertCartItemAtomic(ctx context.Context, arg UpsertCartItemAt
 			&i.BasePrice,
 			&i.SalePrice,
 			&i.Media,
+			&i.IsPreorder,
+			&i.PreorderDepositAmount,
 			&i.Stock,
 			&i.VariantSku,
 			&i.VariantName,

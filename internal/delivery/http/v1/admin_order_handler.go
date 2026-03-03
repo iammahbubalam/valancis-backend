@@ -3,9 +3,9 @@ package v1
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"valancis-backend/internal/domain"
 	"valancis-backend/internal/usecase"
-	"strconv"
 )
 
 type AdminOrderHandler struct {
@@ -35,9 +35,8 @@ func (h *AdminOrderHandler) ListOrders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if val := r.URL.Query().Get("is_preorder"); val != "" {
-		boolVal, err := strconv.ParseBool(val)
-		if err == nil {
-			filter.IsPreOrder = &boolVal
+		if b, err := strconv.ParseBool(val); err == nil {
+			filter.IsPreorder = &b
 		}
 	}
 

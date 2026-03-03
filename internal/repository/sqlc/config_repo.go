@@ -150,5 +150,3 @@ func (r *configRepository) UpdateShippingZoneCost(ctx context.Context, key strin
 func (r *configRepository) DeleteShippingZone(ctx context.Context, id int32) error {
 	return r.queries.DeleteShippingZone(ctx, id)
 }
-
-// Helpers are already defined in this package (shared namespace)

@@ -105,35 +105,37 @@ INSERT INTO products (
     stock_status, is_featured, is_active, 
     media, attributes, specifications, 
     meta_title, meta_description, meta_keywords, og_image,
-    brand, tags, warranty_info
+    brand, tags, warranty_info, is_preorder, preorder_deposit_amount
 ) VALUES (
     $1, $2, $3, $4, $5, 
     $6, $7, $8, 
     $9, $10, $11, 
     $12, $13, $14, $15,
-    $16, $17, $18
-) RETURNING id, name, slug, description, base_price, sale_price, stock_status, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info
+    $16, $17, $18, $19, $20
+) RETURNING id, name, slug, description, base_price, sale_price, stock_status, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info, is_preorder, preorder_deposit_amount
 `
 
 type CreateProductParams struct {
-	Name            string         `json:"name"`
-	Slug            string         `json:"slug"`
-	Description     *string        `json:"description"`
-	BasePrice       pgtype.Numeric `json:"base_price"`
-	SalePrice       pgtype.Numeric `json:"sale_price"`
-	StockStatus     *string        `json:"stock_status"`
-	IsFeatured      bool           `json:"is_featured"`
-	IsActive        bool           `json:"is_active"`
-	Media           []byte         `json:"media"`
-	Attributes      []byte         `json:"attributes"`
-	Specifications  []byte         `json:"specifications"`
-	MetaTitle       *string        `json:"meta_title"`
-	MetaDescription *string        `json:"meta_description"`
-	MetaKeywords    *string        `json:"meta_keywords"`
-	OgImage         *string        `json:"og_image"`
-	Brand           *string        `json:"brand"`
-	Tags            []string       `json:"tags"`
-	WarrantyInfo    []byte         `json:"warranty_info"`
+	Name                  string         `json:"name"`
+	Slug                  string         `json:"slug"`
+	Description           *string        `json:"description"`
+	BasePrice             pgtype.Numeric `json:"base_price"`
+	SalePrice             pgtype.Numeric `json:"sale_price"`
+	StockStatus           *string        `json:"stock_status"`
+	IsFeatured            bool           `json:"is_featured"`
+	IsActive              bool           `json:"is_active"`
+	Media                 []byte         `json:"media"`
+	Attributes            []byte         `json:"attributes"`
+	Specifications        []byte         `json:"specifications"`
+	MetaTitle             *string        `json:"meta_title"`
+	MetaDescription       *string        `json:"meta_description"`
+	MetaKeywords          *string        `json:"meta_keywords"`
+	OgImage               *string        `json:"og_image"`
+	Brand                 *string        `json:"brand"`
+	Tags                  []string       `json:"tags"`
+	WarrantyInfo          []byte         `json:"warranty_info"`
+	IsPreorder            bool           `json:"is_preorder"`
+	PreorderDepositAmount pgtype.Numeric `json:"preorder_deposit_amount"`
 }
 
 func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (Product, error) {
@@ -156,6 +158,8 @@ func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (P
 		arg.Brand,
 		arg.Tags,
 		arg.WarrantyInfo,
+		arg.IsPreorder,
+		arg.PreorderDepositAmount,
 	)
 	var i Product
 	err := row.Scan(
@@ -181,6 +185,8 @@ func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (P
 		&i.Brand,
 		&i.Tags,
 		&i.WarrantyInfo,
+		&i.IsPreorder,
+		&i.PreorderDepositAmount,
 	)
 	return i, err
 }
@@ -329,7 +335,7 @@ func (q *Queries) GetCollectionsByIDs(ctx context.Context, dollar_1 []pgtype.UUI
 }
 
 const getProductByID = `-- name: GetProductByID :one
-SELECT id, name, slug, description, base_price, sale_price, stock_status, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info FROM products WHERE id = $1
+SELECT id, name, slug, description, base_price, sale_price, stock_status, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info, is_preorder, preorder_deposit_amount FROM products WHERE id = $1
 `
 
 func (q *Queries) GetProductByID(ctx context.Context, id pgtype.UUID) (Product, error) {
@@ -358,12 +364,14 @@ func (q *Queries) GetProductByID(ctx context.Context, id pgtype.UUID) (Product, 
 		&i.Brand,
 		&i.Tags,
 		&i.WarrantyInfo,
+		&i.IsPreorder,
+		&i.PreorderDepositAmount,
 	)
 	return i, err
 }
 
 const getProductBySlug = `-- name: GetProductBySlug :one
-SELECT id, name, slug, description, base_price, sale_price, stock_status, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info FROM products WHERE slug = $1
+SELECT id, name, slug, description, base_price, sale_price, stock_status, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info, is_preorder, preorder_deposit_amount FROM products WHERE slug = $1
 `
 
 func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, error) {
@@ -392,6 +400,8 @@ func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, e
 		&i.Brand,
 		&i.Tags,
 		&i.WarrantyInfo,
+		&i.IsPreorder,
+		&i.PreorderDepositAmount,
 	)
 	return i, err
 }
@@ -432,7 +442,7 @@ func (q *Queries) GetProductStats(ctx context.Context) (GetProductStatsRow, erro
 }
 
 const getProducts = `-- name: GetProducts :many
-SELECT id, name, slug, description, base_price, sale_price, stock_status, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info FROM products 
+SELECT id, name, slug, description, base_price, sale_price, stock_status, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info, is_preorder, preorder_deposit_amount FROM products 
 WHERE ($3::boolean IS NULL OR is_active = $3)
 AND ($4::boolean IS NULL OR is_featured = $4)
 ORDER BY created_at DESC
@@ -483,6 +493,8 @@ func (q *Queries) GetProducts(ctx context.Context, arg GetProductsParams) ([]Pro
 			&i.Brand,
 			&i.Tags,
 			&i.WarrantyInfo,
+			&i.IsPreorder,
+			&i.PreorderDepositAmount,
 		); err != nil {
 			return nil, err
 		}
@@ -495,7 +507,7 @@ func (q *Queries) GetProducts(ctx context.Context, arg GetProductsParams) ([]Pro
 }
 
 const getProductsForCollection = `-- name: GetProductsForCollection :many
-SELECT p.id, p.name, p.slug, p.description, p.base_price, p.sale_price, p.stock_status, p.is_featured, p.is_active, p.media, p.attributes, p.specifications, p.created_at, p.updated_at, p.search_vector, p.meta_title, p.meta_description, p.meta_keywords, p.og_image, p.brand, p.tags, p.warranty_info FROM products p
+SELECT p.id, p.name, p.slug, p.description, p.base_price, p.sale_price, p.stock_status, p.is_featured, p.is_active, p.media, p.attributes, p.specifications, p.created_at, p.updated_at, p.search_vector, p.meta_title, p.meta_description, p.meta_keywords, p.og_image, p.brand, p.tags, p.warranty_info, p.is_preorder, p.preorder_deposit_amount FROM products p
 JOIN product_collections pc ON pc.product_id = p.id
 WHERE pc.collection_id = $1 AND p.is_active = true
 ORDER BY p.created_at DESC
@@ -533,6 +545,8 @@ func (q *Queries) GetProductsForCollection(ctx context.Context, collectionID pgt
 			&i.Brand,
 			&i.Tags,
 			&i.WarrantyInfo,
+			&i.IsPreorder,
+			&i.PreorderDepositAmount,
 		); err != nil {
 			return nil, err
 		}
@@ -545,7 +559,7 @@ func (q *Queries) GetProductsForCollection(ctx context.Context, collectionID pgt
 }
 
 const getProductsWithCategoryFilter = `-- name: GetProductsWithCategoryFilter :many
-SELECT DISTINCT p.id, p.name, p.slug, p.description, p.base_price, p.sale_price, p.stock_status, p.is_featured, p.is_active, p.media, p.attributes, p.specifications, p.created_at, p.updated_at, p.search_vector, p.meta_title, p.meta_description, p.meta_keywords, p.og_image, p.brand, p.tags, p.warranty_info FROM products p
+SELECT DISTINCT p.id, p.name, p.slug, p.description, p.base_price, p.sale_price, p.stock_status, p.is_featured, p.is_active, p.media, p.attributes, p.specifications, p.created_at, p.updated_at, p.search_vector, p.meta_title, p.meta_description, p.meta_keywords, p.og_image, p.brand, p.tags, p.warranty_info, p.is_preorder, p.preorder_deposit_amount FROM products p
 JOIN product_categories pc ON pc.product_id = p.id
 JOIN categories c ON c.id = pc.category_id
 WHERE c.slug = $1 
@@ -598,6 +612,8 @@ func (q *Queries) GetProductsWithCategoryFilter(ctx context.Context, arg GetProd
 			&i.Brand,
 			&i.Tags,
 			&i.WarrantyInfo,
+			&i.IsPreorder,
+			&i.PreorderDepositAmount,
 		); err != nil {
 			return nil, err
 		}
@@ -610,7 +626,7 @@ func (q *Queries) GetProductsWithCategoryFilter(ctx context.Context, arg GetProd
 }
 
 const getProductsWithPriceRange = `-- name: GetProductsWithPriceRange :many
-SELECT id, name, slug, description, base_price, sale_price, stock_status, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info FROM products
+SELECT id, name, slug, description, base_price, sale_price, stock_status, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info, is_preorder, preorder_deposit_amount FROM products
 WHERE base_price >= $1 AND base_price <= $2 AND ($3::boolean IS NULL OR is_active = $3)
 ORDER BY created_at DESC
 LIMIT $4 OFFSET $5
@@ -662,6 +678,8 @@ func (q *Queries) GetProductsWithPriceRange(ctx context.Context, arg GetProducts
 			&i.Brand,
 			&i.Tags,
 			&i.WarrantyInfo,
+			&i.IsPreorder,
+			&i.PreorderDepositAmount,
 		); err != nil {
 			return nil, err
 		}
@@ -707,31 +725,33 @@ SET name = $2, slug = $3, description = $4, base_price = $5, sale_price = $6,
     stock_status = $7, is_featured = $8, 
     is_active = $9, media = $10, attributes = $11, specifications = $12,
     meta_title = $13, meta_description = $14, meta_keywords = $15, og_image = $16,
-    brand = $17, tags = $18, warranty_info = $19
+    brand = $17, tags = $18, warranty_info = $19, is_preorder = $20, preorder_deposit_amount = $21
 WHERE id = $1
-RETURNING id, name, slug, description, base_price, sale_price, stock_status, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info
+RETURNING id, name, slug, description, base_price, sale_price, stock_status, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info, is_preorder, preorder_deposit_amount
 `
 
 type UpdateProductParams struct {
-	ID              pgtype.UUID    `json:"id"`
-	Name            string         `json:"name"`
-	Slug            string         `json:"slug"`
-	Description     *string        `json:"description"`
-	BasePrice       pgtype.Numeric `json:"base_price"`
-	SalePrice       pgtype.Numeric `json:"sale_price"`
-	StockStatus     *string        `json:"stock_status"`
-	IsFeatured      bool           `json:"is_featured"`
-	IsActive        bool           `json:"is_active"`
-	Media           []byte         `json:"media"`
-	Attributes      []byte         `json:"attributes"`
-	Specifications  []byte         `json:"specifications"`
-	MetaTitle       *string        `json:"meta_title"`
-	MetaDescription *string        `json:"meta_description"`
-	MetaKeywords    *string        `json:"meta_keywords"`
-	OgImage         *string        `json:"og_image"`
-	Brand           *string        `json:"brand"`
-	Tags            []string       `json:"tags"`
-	WarrantyInfo    []byte         `json:"warranty_info"`
+	ID                    pgtype.UUID    `json:"id"`
+	Name                  string         `json:"name"`
+	Slug                  string         `json:"slug"`
+	Description           *string        `json:"description"`
+	BasePrice             pgtype.Numeric `json:"base_price"`
+	SalePrice             pgtype.Numeric `json:"sale_price"`
+	StockStatus           *string        `json:"stock_status"`
+	IsFeatured            bool           `json:"is_featured"`
+	IsActive              bool           `json:"is_active"`
+	Media                 []byte         `json:"media"`
+	Attributes            []byte         `json:"attributes"`
+	Specifications        []byte         `json:"specifications"`
+	MetaTitle             *string        `json:"meta_title"`
+	MetaDescription       *string        `json:"meta_description"`
+	MetaKeywords          *string        `json:"meta_keywords"`
+	OgImage               *string        `json:"og_image"`
+	Brand                 *string        `json:"brand"`
+	Tags                  []string       `json:"tags"`
+	WarrantyInfo          []byte         `json:"warranty_info"`
+	IsPreorder            bool           `json:"is_preorder"`
+	PreorderDepositAmount pgtype.Numeric `json:"preorder_deposit_amount"`
 }
 
 func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error) {
@@ -755,6 +775,8 @@ func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (P
 		arg.Brand,
 		arg.Tags,
 		arg.WarrantyInfo,
+		arg.IsPreorder,
+		arg.PreorderDepositAmount,
 	)
 	var i Product
 	err := row.Scan(
@@ -780,6 +802,8 @@ func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (P
 		&i.Brand,
 		&i.Tags,
 		&i.WarrantyInfo,
+		&i.IsPreorder,
+		&i.PreorderDepositAmount,
 	)
 	return i, err
 }

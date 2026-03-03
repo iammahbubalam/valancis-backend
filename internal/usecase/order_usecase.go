@@ -300,19 +300,23 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 	processItems := cart.Items
 	cartID := cart.ID
 
-	// 2. Calculate Total & Prepare Order Items & Check Pre-order
+	// 2. Calculate Total & Prepare Order Items & Determine Payment Policy
 	var total float64
 	var orderItems []domain.OrderItem
-	var preOrderDepositRequired float64
-	isPreOrderOrder := false
 
-	// TODO: Get from Config/DB (Admin Setting)
-	const PreOrderPercentage = 0.50
+	// Track total deposit for pre-orders
+	var isPreorder bool
+	var totalDepositRequired float64
 
 	for _, item := range processItems {
 		product, err := u.productRepo.GetProductByID(ctx, item.ProductID)
 		if err != nil {
 			return nil, fmt.Errorf("product %s not found", item.ProductID)
+		}
+
+		if product.IsPreorder {
+			isPreorder = true
+			totalDepositRequired += product.PreorderDepositAmount * float64(item.Quantity)
 		}
 
 		// Verify Variant & Pricing
@@ -347,13 +351,10 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 					if v.SalePrice != nil {
 						price = *v.SalePrice
 					}
-					// Update VariantID for checking stock status if variant had one (currently Product level)
-					// Product.StockStatus is global for now.
 					break
 				}
 			}
 		} else {
-			// No variants? Should not happen with SSOT backfill, but handle gracefully
 			if targetVariantID == "" {
 				return nil, fmt.Errorf("product %s has no inventory variants", product.Name)
 			}
@@ -365,12 +366,6 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 
 		itemTotal := price * float64(item.Quantity)
 		total += itemTotal
-
-		// Pre-order Calculation
-		if product.StockStatus == "pre_order" {
-			isPreOrderOrder = true
-			preOrderDepositRequired += itemTotal * PreOrderPercentage
-		}
 
 		// Use local variable for safe pointer
 		variantIDPtr := &targetVariantID
@@ -384,9 +379,7 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 		})
 	}
 
-	// 3. (Coupon Logic Removed)
-
-	// 4. Shipping Calculation
+	// 3. Shipping Calculation
 	deliveryLocation := "inside_dhaka"
 	if loc, ok := req.Address["deliveryLocation"].(string); ok {
 		deliveryLocation = loc
@@ -400,25 +393,40 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 	shippingFee := zone.Cost
 	total += shippingFee
 
-	// 5. Pre-Order Validation
+	// 4. Payment Policy Enforcement
 	paymentDetails := domain.JSONB{}
 	paymentStatus := "pending"
 	paidAmount := 0.0
 
-	if isPreOrderOrder && preOrderDepositRequired > 0 {
-		if req.PaymentTrxID == "" || req.PaymentProvider == "" || req.PaymentPhone == "" {
-			return nil, fmt.Errorf("pre-order items require partial payment info (TrxID, Provider, Phone)")
-		}
-		paymentStatus = "pending_verification"
-		paidAmount = preOrderDepositRequired
+	var requiredDeposit float64
+	if isPreorder {
+		requiredDeposit = totalDepositRequired
+		if requiredDeposit > 0 {
+			// Require payment info for any non-zero deposit
+			if req.PaymentTrxID == "" || req.PaymentProvider == "" || req.PaymentPhone == "" {
+				return nil, fmt.Errorf("Pre-order requires payment info (TrxID, Provider, Phone) — deposit: %.2f BDT", requiredDeposit)
+			}
+			paymentStatus = "pending_verification"
+			paidAmount = requiredDeposit
 
-		// Map details
+			detailsMap := map[string]interface{}{
+				"provider":         req.PaymentProvider,
+				"transaction_id":   req.PaymentTrxID,
+				"sender_number":    req.PaymentPhone,
+				"deposit_required": requiredDeposit,
+				"shipping_fee":     shippingFee,
+			}
+			paymentDetails = domain.JSONB(detailsMap)
+		}
+	} else if req.Payment == "advance" { // Full payment
+		paymentStatus = "pending_verification"
+		paidAmount = total
+
 		detailsMap := map[string]interface{}{
-			"provider":         req.PaymentProvider,
-			"transaction_id":   req.PaymentTrxID,
-			"sender_number":    req.PaymentPhone,
-			"deposit_required": preOrderDepositRequired,
-			"shipping_fee":     shippingFee,
+			"provider":       req.PaymentProvider,
+			"transaction_id": req.PaymentTrxID,
+			"sender_number":  req.PaymentPhone,
+			"shipping_fee":   shippingFee,
 		}
 		paymentDetails = domain.JSONB(detailsMap)
 	}
@@ -433,12 +441,12 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 		PaymentMethod:   req.Payment,
 		PaymentStatus:   paymentStatus,
 		PaidAmount:      paidAmount,
-		IsPreOrder:      isPreOrderOrder,
+		IsPreorder:      isPreorder,
 		PaymentDetails:  paymentDetails,
 		Items:           orderItems,
 	}
 
-	if isPreOrderOrder {
+	if isPreorder && requiredDeposit > 0 {
 		order.Status = "pending_verification"
 	}
 
@@ -653,8 +661,8 @@ func (u *OrderUsecase) VerifyOrderPayment(ctx context.Context, orderID, adminID 
 		return err
 	}
 
-	if !order.IsPreOrder {
-		return fmt.Errorf("order is not a pre-order")
+	if order.PaymentMethod == "cod" {
+		return fmt.Errorf("order is a COD order, no advance payment to verify")
 	}
 	if order.Status != "pending_verification" {
 		return fmt.Errorf("order status is %s, cannot verify payment", order.Status)

@@ -10,8 +10,8 @@ type OrderFilter struct {
 	Limit         int
 	Status        string
 	PaymentStatus string
-	IsPreOrder    *bool
 	Search        string
+	IsPreorder    *bool
 }
 
 // --- Cart Entities ---
@@ -52,7 +52,7 @@ type Order struct {
 	PaidAmount      float64     `json:"paidAmount"`
 	RefundedAmount  float64     `json:"refundedAmount"`
 	PaymentDetails  JSONB       `json:"paymentDetails"`
-	IsPreOrder      bool        `json:"isPreOrder"`
+	IsPreorder      bool        `json:"isPreorder"`
 	Items           []OrderItem `json:"items"`
 	CreatedAt       time.Time   `json:"createdAt"`
 	UpdatedAt       time.Time   `json:"updatedAt"`

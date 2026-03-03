@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"valancis-backend/db/sqlc"
-	"valancis-backend/internal/domain"
 	"strconv"
 	"sync"
 	"time"
+	"valancis-backend/db/sqlc"
+	"valancis-backend/internal/domain"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -70,23 +70,25 @@ func ptrStrToStr(s *string) string {
 
 func sqlcProductToDomain(p sqlc.Product) domain.Product {
 	prod := domain.Product{
-		ID:              uuidToString(p.ID),
-		Name:            p.Name,
-		Slug:            p.Slug,
-		Description:     ptrString(p.Description),
-		BasePrice:       numericToFloat64(p.BasePrice),
-		SalePrice:       numericToFloat64Ptr(p.SalePrice),
-		StockStatus:     ptrString(p.StockStatus),
-		IsFeatured:      p.IsFeatured,
-		IsActive:        p.IsActive,
-		CreatedAt:       pgtimeToTime(p.CreatedAt),
-		UpdatedAt:       pgtimeToTime(p.UpdatedAt),
-		MetaTitle:       ptrString(p.MetaTitle),
-		MetaDescription: ptrString(p.MetaDescription),
-		Keywords:        ptrString(p.MetaKeywords),
-		OGImage:         ptrString(p.OgImage),
-		Brand:           ptrString(p.Brand),
-		Tags:            p.Tags,
+		ID:                    uuidToString(p.ID),
+		Name:                  p.Name,
+		Slug:                  p.Slug,
+		Description:           ptrString(p.Description),
+		BasePrice:             numericToFloat64(p.BasePrice),
+		SalePrice:             numericToFloat64Ptr(p.SalePrice),
+		StockStatus:           ptrString(p.StockStatus),
+		IsFeatured:            p.IsFeatured,
+		IsActive:              p.IsActive,
+		CreatedAt:             pgtimeToTime(p.CreatedAt),
+		UpdatedAt:             pgtimeToTime(p.UpdatedAt),
+		MetaTitle:             ptrString(p.MetaTitle),
+		MetaDescription:       ptrString(p.MetaDescription),
+		Keywords:              ptrString(p.MetaKeywords),
+		OGImage:               ptrString(p.OgImage),
+		Brand:                 ptrString(p.Brand),
+		Tags:                  p.Tags,
+		IsPreorder:            p.IsPreorder,
+		PreorderDepositAmount: numericToFloat64(p.PreorderDepositAmount),
 	}
 
 	// Handle Media (JSONB)
@@ -1013,24 +1015,26 @@ func (r *productRepository) CreateProduct(ctx context.Context, product *domain.P
 	qtx := r.queries.WithTx(tx)
 
 	created, err := qtx.CreateProduct(ctx, sqlc.CreateProductParams{
-		Name:            product.Name,
-		Slug:            product.Slug,
-		Description:     strPtr(product.Description),
-		BasePrice:       float64ToNumeric(product.BasePrice),
-		SalePrice:       float64PtrToNumeric(product.SalePrice),
-		StockStatus:     strPtr(product.StockStatus),
-		IsFeatured:      product.IsFeatured,
-		IsActive:        product.IsActive,
-		Media:           mediaBytes,
-		Attributes:      attrsBytes,
-		Specifications:  specsBytes,
-		MetaTitle:       strPtr(product.MetaTitle),
-		MetaDescription: strPtr(product.MetaDescription),
-		MetaKeywords:    strPtr(product.Keywords),
-		OgImage:         strPtr(product.OGImage),
-		Brand:           strPtr(product.Brand),
-		Tags:            product.Tags,
-		WarrantyInfo:    warrantyBytes,
+		Name:                  product.Name,
+		Slug:                  product.Slug,
+		Description:           strPtr(product.Description),
+		BasePrice:             float64ToNumeric(product.BasePrice),
+		SalePrice:             float64PtrToNumeric(product.SalePrice),
+		StockStatus:           strPtr(product.StockStatus),
+		IsFeatured:            product.IsFeatured,
+		IsActive:              product.IsActive,
+		Media:                 mediaBytes,
+		Attributes:            attrsBytes,
+		Specifications:        specsBytes,
+		MetaTitle:             strPtr(product.MetaTitle),
+		MetaDescription:       strPtr(product.MetaDescription),
+		MetaKeywords:          strPtr(product.Keywords),
+		OgImage:               strPtr(product.OGImage),
+		Brand:                 strPtr(product.Brand),
+		Tags:                  product.Tags,
+		WarrantyInfo:          warrantyBytes,
+		IsPreorder:            product.IsPreorder,
+		PreorderDepositAmount: float64ToNumeric(product.PreorderDepositAmount),
 	})
 	if err != nil {
 		return err
@@ -1110,25 +1114,27 @@ func (r *productRepository) UpdateProduct(ctx context.Context, product *domain.P
 	warrantyBytes, _ := json.Marshal(product.WarrantyInfo)
 
 	_, err = qtx.UpdateProduct(ctx, sqlc.UpdateProductParams{
-		ID:              productUUID,
-		Name:            product.Name,
-		Slug:            product.Slug,
-		Description:     strPtr(product.Description),
-		BasePrice:       float64ToNumeric(product.BasePrice),
-		SalePrice:       float64PtrToNumeric(product.SalePrice),
-		StockStatus:     strPtr(product.StockStatus),
-		IsFeatured:      product.IsFeatured,
-		IsActive:        product.IsActive,
-		Media:           mediaBytes,
-		Attributes:      attrsBytes,
-		Specifications:  specsBytes,
-		MetaTitle:       strPtr(product.MetaTitle),
-		MetaDescription: strPtr(product.MetaDescription),
-		MetaKeywords:    strPtr(product.Keywords),
-		OgImage:         strPtr(product.OGImage),
-		Brand:           strPtr(product.Brand),
-		Tags:            product.Tags,
-		WarrantyInfo:    warrantyBytes,
+		ID:                    productUUID,
+		Name:                  product.Name,
+		Slug:                  product.Slug,
+		Description:           strPtr(product.Description),
+		BasePrice:             float64ToNumeric(product.BasePrice),
+		SalePrice:             float64PtrToNumeric(product.SalePrice),
+		StockStatus:           strPtr(product.StockStatus),
+		IsFeatured:            product.IsFeatured,
+		IsActive:              product.IsActive,
+		Media:                 mediaBytes,
+		Attributes:            attrsBytes,
+		Specifications:        specsBytes,
+		MetaTitle:             strPtr(product.MetaTitle),
+		MetaDescription:       strPtr(product.MetaDescription),
+		MetaKeywords:          strPtr(product.Keywords),
+		OgImage:               strPtr(product.OGImage),
+		Brand:                 strPtr(product.Brand),
+		Tags:                  product.Tags,
+		WarrantyInfo:          warrantyBytes,
+		IsPreorder:            product.IsPreorder,
+		PreorderDepositAmount: float64ToNumeric(product.PreorderDepositAmount),
 	})
 	if err != nil {
 		return err

@@ -159,28 +159,30 @@ type OrderItem struct {
 }
 
 type Product struct {
-	ID              pgtype.UUID      `json:"id"`
-	Name            string           `json:"name"`
-	Slug            string           `json:"slug"`
-	Description     *string          `json:"description"`
-	BasePrice       pgtype.Numeric   `json:"base_price"`
-	SalePrice       pgtype.Numeric   `json:"sale_price"`
-	StockStatus     *string          `json:"stock_status"`
-	IsFeatured      bool             `json:"is_featured"`
-	IsActive        bool             `json:"is_active"`
-	Media           []byte           `json:"media"`
-	Attributes      []byte           `json:"attributes"`
-	Specifications  []byte           `json:"specifications"`
-	CreatedAt       pgtype.Timestamp `json:"created_at"`
-	UpdatedAt       pgtype.Timestamp `json:"updated_at"`
-	SearchVector    interface{}      `json:"search_vector"`
-	MetaTitle       *string          `json:"meta_title"`
-	MetaDescription *string          `json:"meta_description"`
-	MetaKeywords    *string          `json:"meta_keywords"`
-	OgImage         *string          `json:"og_image"`
-	Brand           *string          `json:"brand"`
-	Tags            []string         `json:"tags"`
-	WarrantyInfo    []byte           `json:"warranty_info"`
+	ID                    pgtype.UUID      `json:"id"`
+	Name                  string           `json:"name"`
+	Slug                  string           `json:"slug"`
+	Description           *string          `json:"description"`
+	BasePrice             pgtype.Numeric   `json:"base_price"`
+	SalePrice             pgtype.Numeric   `json:"sale_price"`
+	StockStatus           *string          `json:"stock_status"`
+	IsFeatured            bool             `json:"is_featured"`
+	IsActive              bool             `json:"is_active"`
+	Media                 []byte           `json:"media"`
+	Attributes            []byte           `json:"attributes"`
+	Specifications        []byte           `json:"specifications"`
+	CreatedAt             pgtype.Timestamp `json:"created_at"`
+	UpdatedAt             pgtype.Timestamp `json:"updated_at"`
+	SearchVector          interface{}      `json:"search_vector"`
+	MetaTitle             *string          `json:"meta_title"`
+	MetaDescription       *string          `json:"meta_description"`
+	MetaKeywords          *string          `json:"meta_keywords"`
+	OgImage               *string          `json:"og_image"`
+	Brand                 *string          `json:"brand"`
+	Tags                  []string         `json:"tags"`
+	WarrantyInfo          []byte           `json:"warranty_info"`
+	IsPreorder            bool             `json:"is_preorder"`
+	PreorderDepositAmount pgtype.Numeric   `json:"preorder_deposit_amount"`
 }
 
 type ProductCategory struct {

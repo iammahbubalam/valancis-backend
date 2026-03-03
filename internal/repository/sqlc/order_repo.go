@@ -43,11 +43,13 @@ func sqlcCartToDomain(c sqlc.Cart, items []sqlc.GetCartItemsRow) *domain.Cart {
 			ProductID: uuidToString(item.ProductID),
 			Quantity:  int(item.Quantity),
 			Product: domain.Product{
-				ID:        uuidToString(item.ProductID),
-				Name:      item.Name,
-				Slug:      item.Slug,
-				BasePrice: numericToFloat64(item.BasePrice),
-				SalePrice: numericToFloat64Ptr(item.SalePrice),
+				ID:                    uuidToString(item.ProductID),
+				Name:                  item.Name,
+				Slug:                  item.Slug,
+				BasePrice:             numericToFloat64(item.BasePrice),
+				SalePrice:             numericToFloat64Ptr(item.SalePrice),
+				IsPreorder:            item.IsPreorder,
+				PreorderDepositAmount: numericToFloat64(item.PreorderDepositAmount),
 			},
 		}
 		if item.VariantID.Valid {
@@ -73,7 +75,7 @@ func sqlcOrderToDomain(o sqlc.Order, items []sqlc.GetOrderItemsRow) *domain.Orde
 		PaymentStatus: ptrString(o.PaymentStatus),
 		PaidAmount:    numericToFloat64(o.PaidAmount),
 		ShippingFee:   numericToFloat64(o.ShippingFee),
-		IsPreOrder:    o.IsPreorder,
+		IsPreorder:    o.IsPreorder,
 		CreatedAt:     pgtimeToTime(o.CreatedAt),
 		UpdatedAt:     pgtimeToTime(o.UpdatedAt),
 	}
@@ -173,11 +175,13 @@ func (r *orderRepository) GetCartWithItems(ctx context.Context, userID string) (
 			ProductID: uuidToString(row.ProductID),
 			Quantity:  int(*row.Quantity),
 			Product: domain.Product{
-				ID:        uuidToString(row.ProductID),
-				Name:      *row.Name,
-				Slug:      *row.Slug,
-				BasePrice: numericToFloat64(row.BasePrice),
-				SalePrice: numericToFloat64Ptr(row.SalePrice),
+				ID:                    uuidToString(row.ProductID),
+				Name:                  *row.Name,
+				Slug:                  *row.Slug,
+				BasePrice:             numericToFloat64(row.BasePrice),
+				SalePrice:             numericToFloat64Ptr(row.SalePrice),
+				IsPreorder:            row.IsPreorder != nil && *row.IsPreorder,
+				PreorderDepositAmount: numericToFloat64(row.PreorderDepositAmount),
 			},
 		}
 
@@ -249,11 +253,13 @@ func (r *orderRepository) UpsertCartItemAtomic(ctx context.Context, userID, cart
 			ProductID: uuidToString(row.ProductID),
 			Quantity:  int(row.Quantity),
 			Product: domain.Product{
-				ID:        uuidToString(row.ProductID),
-				Name:      row.Name,
-				Slug:      row.Slug,
-				BasePrice: numericToFloat64(row.BasePrice),
-				SalePrice: numericToFloat64Ptr(row.SalePrice),
+				ID:                    uuidToString(row.ProductID),
+				Name:                  row.Name,
+				Slug:                  row.Slug,
+				BasePrice:             numericToFloat64(row.BasePrice),
+				SalePrice:             numericToFloat64Ptr(row.SalePrice),
+				IsPreorder:            row.IsPreorder,
+				PreorderDepositAmount: numericToFloat64(row.PreorderDepositAmount),
 			},
 		}
 		if row.VariantID.Valid {
@@ -317,7 +323,7 @@ func (r *orderRepository) CreateOrder(ctx context.Context, order *domain.Order) 
 		PaymentStatus:   strPtr(order.PaymentStatus),
 		PaidAmount:      float64ToNumeric(order.PaidAmount),
 		PaymentDetails:  paymentDetailsBytes,
-		IsPreorder:      order.IsPreOrder,
+		IsPreorder:      order.IsPreorder,
 	})
 	if err != nil {
 		return err
@@ -404,6 +410,7 @@ func (r *orderRepository) GetAll(ctx context.Context, filter domain.OrderFilter)
 	if filter.PaymentStatus != "" {
 		paymentStatus = &filter.PaymentStatus
 	}
+
 	var search *string
 	if filter.Search != "" {
 		search = &filter.Search
@@ -412,7 +419,7 @@ func (r *orderRepository) GetAll(ctx context.Context, filter domain.OrderFilter)
 	orders, err := r.queries.GetAllOrders(ctx, sqlc.GetAllOrdersParams{
 		Status:        status,
 		PaymentStatus: paymentStatus,
-		IsPreorder:    filter.IsPreOrder,
+		IsPreorder:    filter.IsPreorder,
 		Search:        search,
 		Limit:         int32(limit),
 		Offset:        int32(offset),
@@ -424,7 +431,7 @@ func (r *orderRepository) GetAll(ctx context.Context, filter domain.OrderFilter)
 	count, err := r.queries.CountOrders(ctx, sqlc.CountOrdersParams{
 		Status:        status,
 		PaymentStatus: paymentStatus,
-		IsPreorder:    filter.IsPreOrder,
+		IsPreorder:    filter.IsPreorder,
 		Search:        search,
 	})
 	if err != nil {
@@ -442,7 +449,7 @@ func (r *orderRepository) GetAll(ctx context.Context, filter domain.OrderFilter)
 			PaymentStatus: ptrString(o.PaymentStatus),
 			PaidAmount:    numericToFloat64(o.PaidAmount),
 			ShippingFee:   numericToFloat64(o.ShippingFee),
-			IsPreOrder:    o.IsPreorder,
+			IsPreorder:    o.IsPreorder,
 			CreatedAt:     pgtimeToTime(o.CreatedAt),
 			UpdatedAt:     pgtimeToTime(o.UpdatedAt),
 			User: domain.User{
