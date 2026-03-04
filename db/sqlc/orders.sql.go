@@ -753,6 +753,31 @@ func (q *Queries) UpdateOrderPaymentStatus(ctx context.Context, arg UpdateOrderP
 	return err
 }
 
+const updateOrderShippingDetails = `-- name: UpdateOrderShippingDetails :exec
+UPDATE orders 
+SET shipping_address = $2, 
+    shipping_fee = $3, 
+    total_amount = $4 
+WHERE id = $1
+`
+
+type UpdateOrderShippingDetailsParams struct {
+	ID              pgtype.UUID    `json:"id"`
+	ShippingAddress []byte         `json:"shipping_address"`
+	ShippingFee     pgtype.Numeric `json:"shipping_fee"`
+	TotalAmount     pgtype.Numeric `json:"total_amount"`
+}
+
+func (q *Queries) UpdateOrderShippingDetails(ctx context.Context, arg UpdateOrderShippingDetailsParams) error {
+	_, err := q.db.Exec(ctx, updateOrderShippingDetails,
+		arg.ID,
+		arg.ShippingAddress,
+		arg.ShippingFee,
+		arg.TotalAmount,
+	)
+	return err
+}
+
 const updateOrderStatus = `-- name: UpdateOrderStatus :exec
 UPDATE orders SET status = $2 WHERE id = $1
 `

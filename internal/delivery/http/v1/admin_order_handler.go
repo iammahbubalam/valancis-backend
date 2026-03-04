@@ -220,3 +220,32 @@ func (h *AdminOrderHandler) GetOrderHistory(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(history)
 }
+
+func (h *AdminOrderHandler) UpdateShippingZone(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		Zone string `json:"zone"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	// Extract admin ID
+	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
+	if !ok || user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	adminID := user.ID
+
+	if err := h.orderUC.UpdateShippingZone(r.Context(), id, req.Zone, adminID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Shipping zone updated"})
+}

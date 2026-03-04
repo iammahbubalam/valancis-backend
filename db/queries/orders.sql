@@ -194,3 +194,9 @@ ORDER BY oh.created_at DESC;
 -- name: UpdateOrderPaidAmount :exec
 UPDATE orders SET paid_amount = $2 WHERE id = $1;
 
+-- name: UpdateOrderShippingDetails :exec
+UPDATE orders 
+SET shipping_address = $2, 
+    shipping_fee = $3, 
+    total_amount = $4 
+WHERE id = $1;

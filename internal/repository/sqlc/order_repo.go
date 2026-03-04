@@ -649,7 +649,19 @@ func (r *orderRepository) GetOrderHistory(ctx context.Context, orderID string) (
 			h.CreatedName = row.Email
 		}
 
-		history = append(history, h)
 	}
 	return history, nil
+}
+
+func (r *orderRepository) UpdateOrderShippingDetails(ctx context.Context, id string, address domain.JSONB, shippingFee, totalAmount float64) error {
+	addrBytes, err := json.Marshal(address)
+	if err != nil {
+		return err
+	}
+	return r.queries.UpdateOrderShippingDetails(ctx, sqlc.UpdateOrderShippingDetailsParams{
+		ID:              stringToUUID(id),
+		ShippingAddress: addrBytes,
+		ShippingFee:     float64ToNumeric(shippingFee),
+		TotalAmount:     float64ToNumeric(totalAmount),
+	})
 }

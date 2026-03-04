@@ -861,3 +861,60 @@ func (u *OrderUsecase) ProcessRefund(ctx context.Context, orderID string, amount
 func (u *OrderUsecase) GetOrderHistory(ctx context.Context, orderID string) ([]domain.OrderHistory, error) {
 	return u.orderRepo.GetOrderHistory(ctx, orderID)
 }
+
+// UpdateShippingZone updates the deliveryLocation inside the shipping_address JSON and recalculates shipping fee
+func (u *OrderUsecase) UpdateShippingZone(ctx context.Context, orderID string, newZoneKey string, adminID string) error {
+	// 1. Fetch current order
+	order, err := u.orderRepo.GetByID(ctx, orderID)
+	if err != nil {
+		return err
+	}
+
+	// 2. Fetch new zone cost
+	zone, zoneErr := u.configRepo.GetShippingZoneByKey(ctx, newZoneKey)
+	if zoneErr != nil {
+		return fmt.Errorf("shipping zone %s not found: %w", newZoneKey, zoneErr)
+	}
+
+	// 3. Skip if zone is unchanged
+	currentZone := ""
+	if loc, ok := order.ShippingAddress["deliveryLocation"].(string); ok {
+		currentZone = loc
+	}
+
+	if currentZone == newZoneKey {
+		return nil // No change needed
+	}
+
+	// 4. Calculate Financial Impact
+	oldShippingFee := order.ShippingFee
+	newShippingFee := zone.Cost
+
+	diff := newShippingFee - oldShippingFee
+	newTotal := order.TotalAmount + diff
+
+	// 5. Update Address JSON
+	if order.ShippingAddress == nil {
+		order.ShippingAddress = domain.JSONB{}
+	}
+	order.ShippingAddress["deliveryLocation"] = newZoneKey
+
+	// 6. DB Update in Transaction
+	return u.txManager.Do(ctx, func(txCtx context.Context) error {
+		err := u.orderRepo.UpdateOrderShippingDetails(txCtx, orderID, order.ShippingAddress, newShippingFee, newTotal)
+		if err != nil {
+			return err
+		}
+
+		// Build history entry
+		histReason := fmt.Sprintf("Shipping zone changed from %s to %s (Fee difference: %.2f)", currentZone, newZoneKey, diff)
+		history := &domain.OrderHistory{
+			OrderID:        orderID,
+			PreviousStatus: &order.Status,
+			NewStatus:      order.Status,
+			Reason:         &histReason,
+			CreatedBy:      &adminID,
+		}
+		return u.orderRepo.CreateOrderHistory(txCtx, history)
+	})
+}

@@ -91,6 +91,7 @@ type OrderRepository interface {
 	UpdateStatus(ctx context.Context, id, status string) error
 	UpdatePaymentStatus(ctx context.Context, id, status string) error
 	UpdatePaidAmount(ctx context.Context, id string, amount float64) error
+	UpdateOrderShippingDetails(ctx context.Context, id string, address JSONB, shippingFee, totalAmount float64) error
 
 	// Cart
 	GetCartByUserID(ctx context.Context, userID string) (*Cart, error)

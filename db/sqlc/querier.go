@@ -155,6 +155,7 @@ type Querier interface {
 	UpdateOrderPaidAmount(ctx context.Context, arg UpdateOrderPaidAmountParams) error
 	UpdateOrderPaymentStatus(ctx context.Context, arg UpdateOrderPaymentStatusParams) error
 	UpdateOrderRefundedAmount(ctx context.Context, arg UpdateOrderRefundedAmountParams) error
+	UpdateOrderShippingDetails(ctx context.Context, arg UpdateOrderShippingDetailsParams) error
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) error
 	UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error)
 	UpdateProductStatus(ctx context.Context, arg UpdateProductStatusParams) error

@@ -200,6 +200,7 @@ func main() {
 	mux.Handle("GET /api/v1/admin/orders/{id}", adminMiddleware(adminOrderHandler.GetOrder))
 	mux.Handle("PATCH /api/v1/admin/orders/{id}/status", adminMiddleware(adminOrderHandler.UpdateStatus))
 	mux.Handle("PATCH /api/v1/admin/orders/{id}/payment-status", adminMiddleware(adminOrderHandler.UpdatePaymentStatus))
+	mux.Handle("PATCH /api/v1/admin/orders/{id}/shipping-zone", adminMiddleware(adminOrderHandler.UpdateShippingZone))
 	mux.Handle("POST /api/v1/admin/orders/{id}/verify-payment", adminMiddleware(adminOrderHandler.VerifyPayment))
 	mux.Handle("POST /api/v1/admin/orders/{id}/refund", adminMiddleware(adminOrderHandler.RefundOrder))
 	mux.Handle("GET /api/v1/admin/orders/{id}/history", adminMiddleware(adminOrderHandler.GetOrderHistory))
