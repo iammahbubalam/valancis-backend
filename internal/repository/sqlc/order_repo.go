@@ -649,6 +649,7 @@ func (r *orderRepository) GetOrderHistory(ctx context.Context, orderID string) (
 			h.CreatedName = row.Email
 		}
 
+		history = append(history, h)
 	}
 	return history, nil
 }
