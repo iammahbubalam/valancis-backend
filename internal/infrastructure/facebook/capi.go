@@ -197,6 +197,7 @@ func (c *CAPIClient) SendPurchaseEvent(orderID string, value float64, currency s
 	userData.City = HashSHA256(NormalizeGeneric(userData.City))
 	userData.State = HashSHA256(NormalizeGeneric(userData.State))
 	userData.Zip = HashSHA256(NormalizeGeneric(userData.Zip))
+	userData.Country = HashSHA256(NormalizeGeneric(userData.Country))
 
 	event := Event{
 		EventName:    "Purchase",
