@@ -175,12 +175,16 @@ func (h *OrderHandler) Checkout(w http.ResponseWriter, r *http.Request) {
 	}
 	req.UserAgent = r.Header.Get("User-Agent")
 
-	// Extract Facebook Cookies
-	if fbp, err := r.Cookie("_fbp"); err == nil {
-		req.FBP = fbp.Value
+	// Extract Facebook Cookies: prefer JSON body (from frontend), fallback to HTTP cookies
+	if req.FBP == "" {
+		if fbp, err := r.Cookie("_fbp"); err == nil {
+			req.FBP = fbp.Value
+		}
 	}
-	if fbc, err := r.Cookie("_fbc"); err == nil {
-		req.FBC = fbc.Value
+	if req.FBC == "" {
+		if fbc, err := r.Cookie("_fbc"); err == nil {
+			req.FBC = fbc.Value
+		}
 	}
 
 	order, err := h.orderUC.Checkout(r.Context(), user.ID, req)

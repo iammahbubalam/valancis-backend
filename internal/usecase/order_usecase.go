@@ -530,6 +530,12 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 		}
 		if zip, ok := order.ShippingAddress["zip"].(string); ok && zip != "" {
 			userData.Zip = zip
+		} else if zip, ok := order.ShippingAddress["postalCode"].(string); ok && zip != "" {
+			userData.Zip = zip
+		}
+		// Use thana for more granular city matching if available
+		if thana, ok := order.ShippingAddress["thana"].(string); ok && thana != "" {
+			userData.City = thana
 		}
 
 		u.capiClient.SendPurchaseEvent(

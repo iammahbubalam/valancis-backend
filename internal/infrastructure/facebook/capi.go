@@ -13,15 +13,53 @@ import (
 	"time"
 )
 
-// HashSHA256 returns a hex-encoded SHA256 hash of the normalized input string.
+// HashSHA256 returns a hex-encoded SHA256 hash of the input string.
 func HashSHA256(input string) string {
 	if input == "" {
 		return ""
 	}
-	// Normalize: trim whitespace and lowercase
-	normalized := strings.ToLower(strings.TrimSpace(input))
-	hash := sha256.Sum256([]byte(normalized))
+	hash := sha256.Sum256([]byte(input))
 	return hex.EncodeToString(hash[:])
+}
+
+// NormalizePhone strips non-numeric characters and ensures country code for BD
+func NormalizePhone(phone string) string {
+	if phone == "" {
+		return ""
+	}
+	// Strip all non-digits
+	var result strings.Builder
+	for _, r := range phone {
+		if r >= '0' && r <= '9' {
+			result.WriteRune(r)
+		}
+	}
+	digits := result.String()
+
+	// Handle Bangladesh specific normalization
+	// Format should be 8801...
+	if strings.HasPrefix(digits, "01") && len(digits) == 11 {
+		digits = "88" + digits
+	} else if strings.HasPrefix(digits, "1") && len(digits) == 10 {
+		digits = "880" + digits
+	}
+
+	return digits
+}
+
+// NormalizeEmail performs standard email normalization
+func NormalizeEmail(email string) string {
+	if email == "" {
+		return ""
+	}
+	email = strings.ToLower(strings.TrimSpace(email))
+	// Standard CAPI doesn't strictly require stripping +tags, but it helps match quality
+	return email
+}
+
+// NormalizeGeneric trims and lowercases strings (for names, cities, etc)
+func NormalizeGeneric(input string) string {
+	return strings.ToLower(strings.TrimSpace(input))
 }
 
 // CAPIClient handles server-side event tracking to Facebook Conversions API
@@ -151,14 +189,14 @@ func (c *CAPIClient) SendPurchaseEvent(orderID string, value float64, currency s
 		return
 	}
 
-	// PII Hashing: Standardize and hash sensitive fields
-	userData.Email = HashSHA256(userData.Email)
-	userData.Phone = HashSHA256(userData.Phone)
-	userData.FirstName = HashSHA256(userData.FirstName)
-	userData.LastName = HashSHA256(userData.LastName)
-	userData.City = HashSHA256(userData.City)
-	userData.State = HashSHA256(userData.State)
-	userData.Zip = HashSHA256(userData.Zip)
+	// PII Hashing: Standardize and hash sensitive fields for high IMQ
+	userData.Email = HashSHA256(NormalizeEmail(userData.Email))
+	userData.Phone = HashSHA256(NormalizePhone(userData.Phone))
+	userData.FirstName = HashSHA256(NormalizeGeneric(userData.FirstName))
+	userData.LastName = HashSHA256(NormalizeGeneric(userData.LastName))
+	userData.City = HashSHA256(NormalizeGeneric(userData.City))
+	userData.State = HashSHA256(NormalizeGeneric(userData.State))
+	userData.Zip = HashSHA256(NormalizeGeneric(userData.Zip))
 
 	event := Event{
 		EventName:    "Purchase",
